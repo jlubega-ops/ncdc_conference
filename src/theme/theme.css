@@ -1,0 +1,92 @@
+/**
+ * NCDC Conference — CSS custom properties & Tailwind theme bridge.
+ * Import once from globals.css.
+ */
+
+:root {
+  /* Brand — NCDC Uganda green */
+  --ncdc-primary: #008e51;
+  --ncdc-primary-dark: #006941;
+  --ncdc-primary-light: #e8f4ed;
+  --ncdc-primary-muted: #d9e9c8;
+  --ncdc-primary-foreground: #ffffff;
+
+  /* Neutrals */
+  --ncdc-neutral-50: #f8f9fa;
+  --ncdc-neutral-100: #f1f3f5;
+  --ncdc-neutral-200: #e9ecef;
+  --ncdc-neutral-300: #dddfe3;
+  --ncdc-neutral-400: #abb8c3;
+  --ncdc-neutral-500: #627792;
+  --ncdc-neutral-600: #4c4c4c;
+  --ncdc-neutral-700: #32373c;
+  --ncdc-neutral-800: #313233;
+  --ncdc-neutral-900: #1a1a1a;
+
+  /* Semantic */
+  --ncdc-success: #15803d;
+  --ncdc-warning: #b45309;
+  --ncdc-error: #cf2e2e;
+  --ncdc-info: #0e2b5c;
+
+  /* Surfaces & text */
+  --ncdc-background: #f7f8f9;
+  --ncdc-surface: #ffffff;
+  --ncdc-foreground: #313233;
+  --ncdc-muted-foreground: #627792;
+  --ncdc-border: #dddfe3;
+
+  /* Layout */
+  --ncdc-radius-sm: 0.25rem;
+  --ncdc-radius-md: 0.375rem;
+  --ncdc-radius-lg: 0.5rem;
+  --ncdc-radius-xl: 0.75rem;
+
+  /* Legacy aliases used by layout */
+  --background: var(--ncdc-background);
+  --foreground: var(--ncdc-foreground);
+}
+
+@theme inline {
+  /* Brand colors */
+  --color-primary: var(--ncdc-primary);
+  --color-primary-dark: var(--ncdc-primary-dark);
+  --color-primary-light: var(--ncdc-primary-light);
+  --color-primary-muted: var(--ncdc-primary-muted);
+  --color-primary-foreground: var(--ncdc-primary-foreground);
+
+  /* Neutrals */
+  --color-neutral-50: var(--ncdc-neutral-50);
+  --color-neutral-100: var(--ncdc-neutral-100);
+  --color-neutral-200: var(--ncdc-neutral-200);
+  --color-neutral-300: var(--ncdc-neutral-300);
+  --color-neutral-400: var(--ncdc-neutral-400);
+  --color-neutral-500: var(--ncdc-neutral-500);
+  --color-neutral-600: var(--ncdc-neutral-600);
+  --color-neutral-700: var(--ncdc-neutral-700);
+  --color-neutral-800: var(--ncdc-neutral-800);
+  --color-neutral-900: var(--ncdc-neutral-900);
+
+  /* Semantic */
+  --color-success: var(--ncdc-success);
+  --color-warning: var(--ncdc-warning);
+  --color-error: var(--ncdc-error);
+  --color-info: var(--ncdc-info);
+
+  /* Surfaces */
+  --color-background: var(--ncdc-background);
+  --color-surface: var(--ncdc-surface);
+  --color-foreground: var(--ncdc-foreground);
+  --color-muted-foreground: var(--ncdc-muted-foreground);
+  --color-border: var(--ncdc-border);
+
+  /* Typography */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Radius */
+  --radius-sm: var(--ncdc-radius-sm);
+  --radius-md: var(--ncdc-radius-md);
+  --radius-lg: var(--ncdc-radius-lg);
+  --radius-xl: var(--ncdc-radius-xl);
+}

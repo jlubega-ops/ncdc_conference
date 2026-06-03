@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERADMIN
+  CONFERENCE_ADMIN
+  REVIEWER
+  ATTENDEE
+}
+
+enum PublicationStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum ConferenceLifecycleStatus {
+  cfp_open
+  registration_open
+  running
+  submissions_closed
+  upcoming
+  completed
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaperSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  image        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roles                UserRole[]
+  sessions             Session[]
+  conferenceAccessKeys ConferenceAccessKey[]
+  conferencesCreated   Conference[]             @relation("ConferenceCreator")
+  registrations        ConferenceRegistration[]
+  paperSubmissions     PaperSubmission[]
+  conferenceFeedback   ConferenceFeedback[]
+
+  @@map("users")
+}
+
+model UserRole {
+  id           String   @id @default(cuid())
+  userId       String
+  role         Role
+  conferenceId String?
+  createdAt    DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conference Conference? @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role, conferenceId])
+  @@index([userId])
+  @@map("user_roles")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  activeRole Role
+  userAgent  String?  @db.Text
+  ipAddress  String?  @db.VarChar(45)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Conference {
+  id                   String                    @id @default(cuid())
+  slug                 String                    @unique
+  title                String
+  shortDescription     String?                   @db.Text
+  description          String?                   @db.Text
+  theme                String?                   @db.Text
+  subThemes            Json?
+  startDate            DateTime?
+  endDate              DateTime?
+  location             String?
+  venue                String?                   @db.Text
+  category             String?
+  lifecycleStatus      ConferenceLifecycleStatus @default(upcoming)
+  publicationStatus    PublicationStatus         @default(DRAFT)
+  featured             Boolean                   @default(false)
+  cardImage            String?
+  cfpOpenAt            DateTime?
+  cfpCloseAt           DateTime?
+  registrationOpenAt   DateTime?
+  registrationCloseAt  DateTime?
+  conferenceDays       Json?
+  timezone             String?                   @default("Africa/Nairobi")
+  cfpTopics            Json?
+  submissionGuidelines String?                   @db.Text
+  programme            Json?
+  speakers             Json?
+  faqs                 Json?
+  requiresPayment      Boolean                   @default(false)
+  paymentDetails       Json?
+  paidContentVisibility Json?
+  onlineStream         Json?
+  contacts             Json?
+  publishedAt          DateTime?
+  createdById          String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  createdBy      User?                    @relation("ConferenceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  roles          UserRole[]
+  accessKeys     ConferenceAccessKey[]
+  registrations  ConferenceRegistration[]
+  submissions    PaperSubmission[]
+  feedback       ConferenceFeedback[]
+
+  @@index([publicationStatus])
+  @@index([featured])
+  @@index([startDate])
+  @@map("conferences")
+}
+
+model ConferenceAccessKey {
+  id             String    @id @default(cuid())
+  conferenceId   String
+  userId         String?
+  email          String
+  keyHash        String
+  keySuffix      String?
+  conferenceYear Int?
+  label          String?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([conferenceId, email])
+  @@index([email, conferenceYear])
+  @@map("conference_access_keys")
+}
+
+model ConferenceRegistration {
+  id              String             @id @default(cuid())
+  conferenceId    String
+  userId          String
+  status          RegistrationStatus @default(PENDING)
+  paymentStatus   String?
+  paymentProofUrl String?
+  formData        Json?
+  notes           String?            @db.Text
+  registeredAt    DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conferenceId, userId])
+  @@index([conferenceId])
+  @@map("conference_registrations")
+}
+
+model PaperSubmission {
+  id           String                @id @default(cuid())
+  conferenceId String
+  userId       String
+  title        String
+  abstract     String?               @db.Text
+  fileUrl      String?
+  status       PaperSubmissionStatus @default(DRAFT)
+  submittedAt  DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conferenceId])
+  @@index([userId])
+  @@map("paper_submissions")
+}
+
+model ConferenceFeedback {
+  id           String   @id @default(cuid())
+  conferenceId String
+  userId       String
+  rating       Int?
+  comment      String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conferenceId])
+  @@map("conference_feedback")
+}

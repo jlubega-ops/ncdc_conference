@@ -1,0 +1,108 @@
+---
+description: NCDC Conference Management System — project standards, theme, and conventions
+alwaysApply: true
+---
+
+# NCDC Conference Management System
+
+Conference management platform for the National Curriculum Development Centre (NCDC), Uganda.
+
+## Before Writing Code
+
+- Read Next.js docs in `node_modules/next/dist/docs/` — this project uses Next.js 16 with breaking changes.
+- Follow existing patterns in the codebase before introducing new abstractions.
+- Keep changes focused; do not refactor unrelated code.
+
+## Theme & Visual Design
+
+**Always use the shared theme.** Do not introduce ad-hoc colors, fonts, or icon libraries.
+
+| Resource | Location |
+|----------|----------|
+| CSS variables & Tailwind tokens | `src/theme/theme.css` |
+| JS tokens (charts, PDFs, etc.) | `src/theme/tokens.js` |
+| UI components | `src/components/ui/` |
+| Theme preview | `/theme` route |
+
+### Color Palette (NCDC green)
+
+- **Primary**: `#008e51` — buttons, links, active states, key accents
+- **Primary dark**: `#006941` — hover/pressed states
+- **Primary light**: `#e8f4ed` — subtle highlights, selected rows
+- **Neutrals**: `#313233` text, `#627792` muted text, `#dddfe3` borders
+- **Semantic**: success `#15803d`, warning `#b45309`, error `#cf2e2e`, info `#0e2b5c`
+
+Use Tailwind classes: `bg-primary`, `text-primary`, `border-border`, `text-muted-foreground`, etc.
+
+### Design Principles
+
+- Clean, institutional, professional — not flashy or overly decorative
+- White/light gray surfaces; green reserved for actions and emphasis
+- Subtle borders and shadows; avoid heavy gradients or bright accents
+- Consistent `rounded-md` corners (not pill-shaped unless intentional)
+- Prefer Geist Sans (`font-sans`) for all UI text
+
+## Icons
+
+- Use **Lucide React** (`lucide-react`) exclusively
+- Wrap icons with `<Icon icon={SomeIcon} size="md" />` from `@/components/ui/Icon`
+- Sizes: `sm` (16px), `md` (20px), `lg` (24px), `xl` (32px)
+- Stroke width: 1.75 (set by Icon wrapper — do not override unless necessary)
+
+## Buttons
+
+Use `<Button>` from `@/components/ui/Button`:
+
+```jsx
+import { Button } from "@/components/ui/Button";
+import { Plus } from "lucide-react";
+
+<Button variant="primary" icon={Plus}>Register</Button>
+<Button variant="secondary">Cancel</Button>
+<Button variant="outline">View details</Button>
+<Button variant="ghost">Back</Button>
+<Button variant="danger">Delete</Button>
+```
+
+Variants: `primary` | `secondary` | `ghost` | `outline` | `danger`
+Sizes: `sm` | `md` | `lg`
+
+## File Structure
+
+```
+src/
+  app/           # Next.js App Router pages & layouts
+  components/
+    ui/          # Reusable themed UI primitives
+  lib/           # Utilities (cn, helpers)
+  theme/         # Design tokens & CSS variables
+```
+
+## Code Conventions
+
+- JavaScript (`.js`/`.jsx`) unless TypeScript is explicitly requested
+- Functional React components; colocate related files
+- Use `@/` path alias for imports (configured in `jsconfig.json`)
+- Use `cn()` from `@/lib/cn` for conditional class names
+- Server Components by default; add `"use client"` only when needed
+
+## Naming
+
+- Components: PascalCase (`ConferenceCard.jsx`)
+- Files/routes: kebab-case for routes, match component name for components
+- CSS: Tailwind utility classes; no inline styles unless dynamic values require it
+
+## Accessibility
+
+- Semantic HTML (`button`, `nav`, `main`, `label`)
+- Visible focus rings (already styled on Button)
+- `aria-label` on icon-only buttons
+- Sufficient color contrast — do not lighten primary green for body text
+
+## What Not To Do
+
+- Do not use random hex colors — use theme tokens
+- Do not add new UI libraries (MUI, Chakra, etc.) without explicit approval
+- Do not use emoji as icons
+- Do not enable dark mode unless explicitly requested — theme is light-first
+- Do not create commits unless the user asks
