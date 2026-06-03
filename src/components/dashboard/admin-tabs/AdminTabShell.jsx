@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { formatAdminDateTime } from "@/lib/conferences/utils";
+import { AdminListFilters } from "./AdminListFilters";
 
 /**
- * @param {{ label: string, emptyMessage: string, conferenceId: string, endpoint: string, renderRow: (item: any) => React.ReactNode, columns: { key: string, label: string, className?: string }[] }} props
+ * @param {{
+ *   label: string;
+ *   emptyMessage: string;
+ *   conferenceId: string;
+ *   endpoint: string;
+ *   renderRow: (item: any) => React.ReactNode;
+ *   columns: { key: string; label: string; className?: string }[];
+ *   statusOptions?: { value: string; label: string }[];
+ *   getSearchText?: (item: any) => string;
+ * }} props
  */
 export function AdminDataListTab({
   label,
@@ -13,10 +24,14 @@ export function AdminDataListTab({
   endpoint,
   columns,
   renderRow,
+  statusOptions = [],
+  getSearchText,
 }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +66,16 @@ export function AdminDataListTab({
     };
   }, [conferenceId, endpoint, label]);
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter((item) => {
+      if (statusFilter !== "all" && item.status !== statusFilter) return false;
+      if (!q) return true;
+      const text = (getSearchText?.(item) ?? "").toLowerCase();
+      return text.includes(q);
+    });
+  }, [items, search, statusFilter, getSearchText]);
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading {label.toLowerCase()}…</p>;
   }
@@ -59,52 +84,55 @@ export function AdminDataListTab({
     return <p className="text-sm text-error">{error}</p>;
   }
 
-  if (items.length === 0) {
-    return (
-      <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-        {emptyMessage}
-      </p>
-    );
-  }
-
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="min-w-full divide-y divide-border text-sm">
-        <thead className="bg-background">
-          <tr>
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                scope="col"
-                className={cn(
-                  "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
-                  col.className,
-                )}
-              >
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border bg-surface">
-          {items.map((item) => renderRow(item))}
-        </tbody>
-      </table>
+    <div>
+      <AdminListFilters
+        search={search}
+        onSearchChange={setSearch}
+        statusFilter={statusFilter}
+        onStatusFilterChange={statusOptions.length ? setStatusFilter : undefined}
+        statusOptions={statusOptions}
+        searchPlaceholder={`Search ${label.toLowerCase()}…`}
+      />
+      {items.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+          {emptyMessage}
+        </p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+          No results match your filters.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="min-w-full divide-y divide-border text-sm">
+            <thead className="bg-background">
+              <tr>
+                {columns.map((col) => (
+                  <th
+                    key={col.key}
+                    scope="col"
+                    className={cn(
+                      "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                      col.className,
+                    )}
+                  >
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-surface">
+              {filtered.map((item) => renderRow(item))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 export function formatAdminDate(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-UG", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatAdminDateTime(value);
 }
 
 export function UserCell({ user }) {

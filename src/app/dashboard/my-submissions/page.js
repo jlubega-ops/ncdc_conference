@@ -1,7 +1,5 @@
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { redirect } from "next/navigation";
 
-export default function MySubmissionsPage() {
-  return (
-    <PlaceholderPage title="My Submissions" description="Track your submitted papers." />
-  );
+export default function MySubmissionsRedirectPage() {
+  redirect("/dashboard/submit-paper");
 }

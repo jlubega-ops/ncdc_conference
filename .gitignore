@@ -20,6 +20,9 @@
 # production
 /build
 
+# private uploads (payment proofs, etc.)
+/storage/private/
+
 # misc
 .DS_Store
 *.pem

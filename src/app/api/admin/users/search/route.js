@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSuperadmin } from "@/lib/auth/guards";
+import { requireConferenceManager } from "@/lib/auth/guards";
 
 export async function GET(request) {
-  const session = await requireSuperadmin();
+  const session = await requireConferenceManager();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
-  if (q.length < 2) {
+  if (q.length < 3) {
     return NextResponse.json({ users: [] });
   }
 
@@ -20,13 +20,18 @@ export async function GET(request) {
         { email: { contains: q } },
         { name: { contains: q } },
       ],
+      roles: {
+        some: {
+          role: { in: ["REVIEWER", "CONFERENCE_ADMIN", "SUPERADMIN"] },
+        },
+      },
     },
     select: {
       id: true,
       email: true,
       name: true,
     },
-    take: 10,
+    take: 8,
     orderBy: { email: "asc" },
   });
 

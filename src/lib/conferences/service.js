@@ -66,7 +66,11 @@ export function mapConferenceForUi(conference) {
     id: conference.id,
     slug: conference.slug,
     title: conference.title,
-    shortDescription: conference.shortDescription ?? "",
+    shortDescription:
+      conference.shortDescription?.trim() ||
+      (conference.description
+        ? String(conference.description).replace(/\s+/g, " ").trim().slice(0, 200)
+        : ""),
     description: conference.description ?? "",
     theme: conference.theme ?? "",
     subThemes,

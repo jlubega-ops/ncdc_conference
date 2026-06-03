@@ -19,19 +19,19 @@ export function slugify(title) {
 export function formatDateRange(start, end) {
   if (!start) return "";
   const s = new Date(start);
-  const opts = { day: "numeric", month: "short", year: "numeric" };
-  const startStr = s.toLocaleDateString("en-GB", opts);
-  if (!end) return startStr;
+  if (Number.isNaN(s.getTime())) return "";
+  if (!end) return format(s, "d MMM yyyy");
   const e = new Date(end);
+  if (Number.isNaN(e.getTime())) return format(s, "d MMM yyyy");
   const sameYear = s.getFullYear() === e.getFullYear();
   const sameMonth = sameYear && s.getMonth() === e.getMonth();
   if (sameMonth) {
-    return `${s.getDate()}–${e.getDate()} ${e.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`;
+    return `${format(s, "d")}–${format(e, "d MMMM yyyy")}`;
   }
   if (sameYear) {
-    return `${s.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}–${e.toLocaleDateString("en-GB", opts)}`;
+    return `${format(s, "d MMM")}–${format(e, "d MMM yyyy")}`;
   }
-  return `${startStr} – ${e.toLocaleDateString("en-GB", opts)}`;
+  return `${format(s, "d MMM yyyy")} – ${format(e, "d MMM yyyy")}`;
 }
 
 /**
@@ -62,16 +62,33 @@ export function parseJsonArray(json) {
 
 export function formatDeadlineDate(dateStr) {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  if (Number.isNaN(date.getTime())) return "";
+  return format(date, "d MMM");
 }
 
 export function formatFullDate(dateStr) {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  if (Number.isNaN(date.getTime())) return "";
+  return format(date, "d MMMM yyyy");
+}
+
+/**
+ * Stable date+time for tables (avoids locale/timezone hydration drift).
+ * @param {Date | string | null | undefined} value
+ */
+export function formatAdminDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return format(d, "d MMM yyyy, HH:mm");
+}
+
+/** @param {Date | string | null | undefined} value */
+export function formatAdminDateOnly(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return format(d, "d MMM yyyy");
 }
 
 /**
@@ -225,7 +242,7 @@ export function normalizeSpeaker(raw) {
     scheduleMode = dates.length > 0 ? "specific" : "all";
   }
 
-  const speakerType = ["normal", "keynote", "guest"].includes(raw.speakerType)
+  const speakerType = ["normal", "keynote", "guest", "host", "mc"].includes(raw.speakerType)
     ? raw.speakerType
     : "normal";
 

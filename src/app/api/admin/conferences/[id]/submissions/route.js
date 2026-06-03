@@ -12,7 +12,10 @@ export async function GET(_request, { params }) {
 
   const rows = await prisma.paperSubmission.findMany({
     where: { conferenceId: id },
-    include: { user: { select: userSelect } },
+    include: {
+      user: { select: userSelect },
+      assignedReviewer: { select: userSelect },
+    },
     orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
   });
 

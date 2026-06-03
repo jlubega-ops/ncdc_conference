@@ -6,32 +6,45 @@ import {
   LayoutDashboard,
   Users,
   Calendar,
+  CalendarDays,
   Settings,
   FileText,
+  FilePlus,
+  Files,
   ClipboardCheck,
   UserPlus,
   Ticket,
   BarChart3,
   Key,
+  BookOpen,
+  UserCheck,
+  Award,
   X,
 } from "lucide-react";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { useSession } from "@/components/auth/SessionProvider";
-import { getNavForRole } from "@/lib/auth/permissions";
+import { getNavForRole, PERMISSIONS } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
+import { PaperNotificationBadge } from "@/components/dashboard/PaperNotificationBadge";
 
 const ICON_MAP = {
   LayoutDashboard,
   Users,
   Calendar,
+  CalendarDays,
   Settings,
   FileText,
+  FilePlus,
+  Files,
   ClipboardCheck,
   UserPlus,
   Ticket,
   BarChart3,
   Key,
+  BookOpen,
+  UserCheck,
+  Award,
 };
 
 /**
@@ -75,7 +88,10 @@ export function DashboardSidebar({ mobileOpen, onClose }) {
               )}
             >
               <Icon icon={LucideIcon} size="sm" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.permission === PERMISSIONS.MY_PAPERS ? (
+                <PaperNotificationBadge />
+              ) : null}
             </Link>
           );
         })}

@@ -4,8 +4,8 @@ import { LinkifiedText } from "@/components/ui/LinkifiedText";
 /**
  * @param {{ conference: any, className?: string }} props
  */
-export function OnlineStreamSection({ conference, className }) {
-  if (!canViewConferenceContent(conference, "viewOnlineLinks")) return null;
+export function OnlineStreamSection({ conference, className, registrationStatus }) {
+  if (!canViewConferenceContent(conference, "viewOnlineLinks", registrationStatus)) return null;
 
   const stream = conference.onlineStream;
   const youtubeLink = stream?.youtubeLink?.trim();

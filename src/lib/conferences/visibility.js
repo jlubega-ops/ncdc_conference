@@ -1,24 +1,12 @@
-import { DEFAULT_PAID_VISIBILITY } from "@/lib/conferences/constants";
+import { canViewConferenceContent as canViewWithRegistration } from "@/lib/registration/access";
 
-/**
- * @param {unknown} raw
- */
-export function normalizePaidContentVisibility(raw) {
-  const base = { ...DEFAULT_PAID_VISIBILITY };
-  if (!raw || typeof raw !== "object") return base;
-  return {
-    viewProgramme: raw.viewProgramme !== false,
-    viewSpeakers: raw.viewSpeakers !== false,
-    viewOnlineLinks: Boolean(raw.viewOnlineLinks),
-  };
-}
+export { normalizePaidContentVisibility } from "@/lib/registration/access";
 
 /**
  * @param {any} conference
  * @param {"viewProgramme"|"viewSpeakers"|"viewOnlineLinks"} key
+ * @param {string | null | undefined} [registrationStatus]
  */
-export function canViewConferenceContent(conference, key) {
-  if (!conference?.requiresPayment) return true;
-  const visibility = normalizePaidContentVisibility(conference.paidContentVisibility);
-  return Boolean(visibility[key]);
+export function canViewConferenceContent(conference, key, registrationStatus) {
+  return canViewWithRegistration(conference, key, registrationStatus);
 }

@@ -1,6 +1,10 @@
 import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { requirePermissionPage } from "@/lib/auth/guards";
+import { PERMISSIONS } from "@/lib/auth/permissions";
 
-export default function AccessKeysPage() {
+export default async function AccessKeysPage() {
+  await requirePermissionPage(PERMISSIONS.ACCESS_KEYS, "/dashboard/access-keys");
+
   return (
     <PlaceholderPage
       title="Access Keys"

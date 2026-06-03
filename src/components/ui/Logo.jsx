@@ -26,6 +26,7 @@ export function Logo({ size = "md", showText = true, linkToHome = true, classNam
         width={img * 2}
         height={img}
         className="h-8 w-auto object-contain sm:h-10"
+        style={{ width: "auto", height: "auto", maxHeight: size === "lg" ? "2.5rem" : "2rem" }}
         priority={size !== "sm"}
       />
       {showText ? (

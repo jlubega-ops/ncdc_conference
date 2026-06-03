@@ -42,17 +42,6 @@ export async function POST(request) {
       );
     }
 
-    const staffRole = user.roles.find((r) => STAFF_ROLES.includes(r.role));
-    if (!staffRole) {
-      return NextResponse.json(
-        {
-          error:
-            "This account cannot sign in with a password. Use conference access instead.",
-        },
-        { status: 403 },
-      );
-    }
-
     const activeRole = await resolveLoginActiveRole(user.id);
     if (!activeRole) {
       return NextResponse.json(
@@ -62,9 +51,16 @@ export async function POST(request) {
     }
 
     const token = await createUserSession(user.id, activeRole, request);
+
+    let redirect = "/dashboard";
+    if (!user.roles.some((r) => STAFF_ROLES.includes(r.role))) {
+      redirect = "/dashboard/my-registrations";
+    }
+
     const response = NextResponse.json({
       ok: true,
-      redirect: "/dashboard",
+      redirect,
+      mustChangePassword: user.mustChangePassword,
     });
     await setSessionCookie(response, token);
     return response;

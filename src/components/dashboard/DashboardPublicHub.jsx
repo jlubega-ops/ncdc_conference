@@ -21,13 +21,10 @@ export function DashboardPublicHub() {
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Button variant="primary" href="/login">
-            Staff sign in
+            Sign in
           </Button>
           <Button variant="outline" href="/conferences">
             Browse conferences
-          </Button>
-          <Button variant="outline" href="/login?tab=access">
-            Use access key
           </Button>
         </div>
       </div>

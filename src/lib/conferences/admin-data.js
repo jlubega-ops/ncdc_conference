@@ -2,6 +2,7 @@ const userSelect = {
   id: true,
   email: true,
   name: true,
+  mustChangePassword: true,
 };
 
 /**
@@ -13,11 +14,17 @@ export function mapRegistrationForAdmin(row) {
     id: row.id,
     status: row.status,
     paymentStatus: row.paymentStatus,
-    paymentProofUrl: row.paymentProofUrl,
-    notes: row.notes,
+    paymentProofFileId: row.paymentProofFileId,
+    paymentProofUrl: row.paymentProofFileId
+      ? `/api/files/payment-proofs/${encodeURIComponent(row.paymentProofFileId)}`
+      : null,
+    adminNotes: row.adminNotes,
+    improvementRequest: row.improvementRequest,
+    reviewedAt: row.reviewedAt,
     registeredAt: row.registeredAt,
     updatedAt: row.updatedAt,
     user: row.user,
+    accountActivated: row.user ? !row.user.mustChangePassword : false,
     formData: form,
     displayName:
       form.fullName ||
@@ -29,21 +36,13 @@ export function mapRegistrationForAdmin(row) {
   };
 }
 
+import { mapPaperForAdmin } from "@/lib/papers/map";
+
 /**
  * @param {any} row
  */
 export function mapSubmissionForAdmin(row) {
-  return {
-    id: row.id,
-    title: row.title,
-    abstract: row.abstract,
-    fileUrl: row.fileUrl,
-    status: row.status,
-    submittedAt: row.submittedAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    user: row.user,
-  };
+  return mapPaperForAdmin(row);
 }
 
 /**

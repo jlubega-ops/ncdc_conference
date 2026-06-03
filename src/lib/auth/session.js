@@ -133,6 +133,7 @@ export async function getCurrentSession() {
       email: user.email,
       name: user.name,
       image: user.image,
+      mustChangePassword: user.mustChangePassword,
     },
     activeRole,
     availableRoles,

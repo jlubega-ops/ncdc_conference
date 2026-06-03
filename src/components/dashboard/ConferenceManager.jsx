@@ -32,6 +32,7 @@ import {
   SPEAKER_TYPE_LABELS,
   STATUS_LABELS,
 } from "@/lib/conferences/constants";
+import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
 import { validateConferenceForm } from "@/lib/conferences/validation";
 import { normalizePaidContentVisibility } from "@/lib/conferences/visibility";
 import {
@@ -56,7 +57,6 @@ function emptyConference() {
     id: null,
     slug: "",
     title: "",
-    shortDescription: "",
     description: "",
     theme: "",
     subThemes: [],
@@ -152,18 +152,29 @@ function hasProgrammeOverlap(programmes, nextEntry) {
 
 function normalizeForSubmit(form, publicationStatusOverride) {
   const publicationStatus = publicationStatusOverride || form.publicationStatus || "DRAFT";
+  const conferenceDays = Array.isArray(form.conferenceDays)
+    ? form.conferenceDays.filter((day) => day?.date)
+    : [];
+  const cascaded = cascadeConferenceScheduleData({
+    conferenceDays,
+    programme: form.programme,
+    speakers: form.speakers,
+  });
+  const description = (form.description ?? "").trim();
   return {
     ...form,
     publicationStatus,
-    ...deriveDateRangeFromConferenceDays(form.conferenceDays),
+    description,
+    shortDescription: description.replace(/\s+/g, " ").slice(0, 200) || null,
+    ...deriveDateRangeFromConferenceDays(conferenceDays),
     timezone: form.timezone || "Africa/Nairobi",
     cfpOpenAt: form.cfpOpenAt || null,
     cfpCloseAt: form.cfpCloseAt || null,
     registrationOpenAt: form.registrationOpenAt || null,
     registrationCloseAt: form.registrationCloseAt || null,
-    conferenceDays: Array.isArray(form.conferenceDays)
-      ? form.conferenceDays.filter((day) => day?.date)
-      : [],
+    conferenceDays,
+    programme: cascaded.programme,
+    speakers: cascaded.speakers,
     requiresPayment: Boolean(form.requiresPayment),
     paymentDetails: form.requiresPayment
       ? normalizePaymentDetails(form.paymentDetails)
@@ -222,9 +233,7 @@ function mapFaqsForForm(faqs) {
 
 function fieldBelongsToSection(key, sectionId) {
   if (sectionId === "basics") {
-    return ["title", "slug", "shortDescription", "description", "theme", "category"].includes(
-      key,
-    );
+    return ["title", "slug", "description", "theme", "category"].includes(key);
   }
   if (sectionId === "schedule") {
     return (
@@ -315,6 +324,7 @@ export function ConferenceManager({ conferences }) {
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
   const [programmeDrafts, setProgrammeDrafts] = useState({});
   const [speakerDraft, setSpeakerDraft] = useState(emptySpeakerDraft);
+  const [editingSpeakerId, setEditingSpeakerId] = useState(null);
   const [faqDraft, setFaqDraft] = useState(emptyFaqDraft);
   const [newContactEmail, setNewContactEmail] = useState("");
   const [uploadingSpeakerPhoto, setUploadingSpeakerPhoto] = useState(false);
@@ -380,6 +390,7 @@ export function ConferenceManager({ conferences }) {
     });
     setProgrammeDrafts({});
     setSpeakerDraft(emptySpeakerDraft());
+    setEditingSpeakerId(null);
     setFaqDraft(emptyFaqDraft());
     setNewContactEmail("");
     setNewSubTheme("");
@@ -413,6 +424,7 @@ export function ConferenceManager({ conferences }) {
     }
     setProgrammeDrafts({});
     setSpeakerDraft(emptySpeakerDraft());
+    setEditingSpeakerId(null);
     setFaqDraft(emptyFaqDraft());
     setNewContactEmail("");
     setError("");
@@ -464,6 +476,7 @@ export function ConferenceManager({ conferences }) {
     }
     setProgrammeDrafts({});
     setSpeakerDraft(emptySpeakerDraft());
+    setEditingSpeakerId(null);
     setFaqDraft(emptyFaqDraft());
     setNewContactEmail("");
     setError("");
@@ -478,6 +491,7 @@ export function ConferenceManager({ conferences }) {
     setFieldErrors({});
     setProgrammeDrafts({});
     setSpeakerDraft(emptySpeakerDraft());
+    setEditingSpeakerId(null);
     setFaqDraft(emptyFaqDraft());
     setNewContactEmail("");
   }
@@ -519,8 +533,26 @@ export function ConferenceManager({ conferences }) {
   function removeConferenceDay(index) {
     setEditing((prev) => {
       const nextDays = Array.isArray(prev.conferenceDays) ? [...prev.conferenceDays] : [];
+      const removedDate = nextDays[index]?.date;
       nextDays.splice(index, 1);
-      return { ...prev, conferenceDays: nextDays };
+      const cascaded = cascadeConferenceScheduleData({
+        conferenceDays: nextDays,
+        programme: prev.programme,
+        speakers: prev.speakers,
+      });
+      if (removedDate) {
+        setProgrammeDrafts((drafts) => {
+          const next = { ...drafts };
+          delete next[removedDate];
+          return next;
+        });
+      }
+      return {
+        ...prev,
+        conferenceDays: nextDays,
+        programme: cascaded.programme,
+        speakers: cascaded.speakers,
+      };
     });
   }
 
@@ -664,7 +696,7 @@ export function ConferenceManager({ conferences }) {
     });
   }
 
-  function addSpeaker() {
+  function saveSpeaker() {
     const draftErrors = {};
     const name = speakerDraft.name?.trim();
     const title = speakerDraft.title?.trim();
@@ -686,7 +718,7 @@ export function ConferenceManager({ conferences }) {
     }
 
     const entry = normalizeSpeaker({
-      id: createSpeakerId(),
+      id: editingSpeakerId || createSpeakerId(),
       name,
       title,
       speakerType: speakerDraft.speakerType || "normal",
@@ -698,7 +730,45 @@ export function ConferenceManager({ conferences }) {
 
     if (!entry) return;
 
-    onField("speakers", [...(Array.isArray(editing.speakers) ? editing.speakers : []), entry]);
+    const current = Array.isArray(editing.speakers) ? editing.speakers : [];
+    const nextSpeakers = editingSpeakerId
+      ? current.map((speaker) => (speaker.id === editingSpeakerId ? entry : speaker))
+      : [...current, entry];
+
+    onField("speakers", nextSpeakers);
+    setSpeakerDraft(emptySpeakerDraft());
+    setEditingSpeakerId(null);
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith("speakers.")) delete next[key];
+      });
+      return next;
+    });
+  }
+
+  function beginEditSpeaker(speaker) {
+    setEditingSpeakerId(speaker.id);
+    setSpeakerDraft({
+      name: speaker.name || "",
+      title: speaker.title || "",
+      speakerType: speaker.speakerType || "normal",
+      photo: speaker.photo || "",
+      bio: speaker.bio || "",
+      scheduleMode: speaker.scheduleMode || "all",
+      dates: Array.isArray(speaker.dates) ? [...speaker.dates] : [],
+    });
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith("speakers.")) delete next[key];
+      });
+      return next;
+    });
+  }
+
+  function cancelEditSpeaker() {
+    setEditingSpeakerId(null);
     setSpeakerDraft(emptySpeakerDraft());
     setFieldErrors((prev) => {
       const next = { ...prev };
@@ -710,6 +780,7 @@ export function ConferenceManager({ conferences }) {
   }
 
   function removeSpeakerById(id) {
+    if (editingSpeakerId === id) cancelEditSpeaker();
     onField(
       "speakers",
       (Array.isArray(editing.speakers) ? editing.speakers : []).filter(
@@ -1140,7 +1211,7 @@ export function ConferenceManager({ conferences }) {
 
                 <div className="space-y-3 p-4">
                   <p className="line-clamp-2 text-sm text-muted-foreground">
-                    {conf.shortDescription || "No summary added yet."}
+                    {conf.shortDescription || conf.description?.slice(0, 120) || "No description yet."}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Icon icon={Calendar} size="sm" className="text-primary" />
@@ -1262,15 +1333,6 @@ export function ConferenceManager({ conferences }) {
                       onChange={(e) => onField("slug", e.target.value)}
                       hint="Optional. Auto-generated from title if blank."
                     />
-                    <div className="sm:col-span-2">
-                      <Input
-                        label="Short description"
-                        value={editing.shortDescription}
-                        onChange={(e) => onField("shortDescription", e.target.value)}
-                        error={fieldErrors.shortDescription}
-                        requiredMark
-                      />
-                    </div>
                     <div className="sm:col-span-2">
                       <FieldLabel required>Description</FieldLabel>
                       <textarea
@@ -1599,36 +1661,48 @@ export function ConferenceManager({ conferences }) {
                       <p className="mb-2 text-xs text-muted-foreground">
                         Add topics one by one so submitters can select them clearly later.
                       </p>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <input
-                          className="h-10 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-foreground"
+                          className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground"
                           value={newTopic}
                           onChange={(e) => setNewTopic(e.target.value)}
                           placeholder="e.g. Curriculum Assessment"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addTopic();
+                            }
+                          }}
                         />
-                        <Button variant="outline" size="sm" icon={Plus} onClick={addTopic}>
-                          Add
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          icon={Plus}
+                          onClick={addTopic}
+                          className="shrink-0 sm:w-auto"
+                        >
+                          Add topic
                         </Button>
                       </div>
                       {editing.cfpTopics?.length ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
+                        <ul className="mt-3 space-y-2">
                           {editing.cfpTopics.map((topic, index) => (
-                            <span
+                            <li
                               key={`${topic}-${index}`}
-                              className="inline-flex items-center gap-1 rounded-md bg-primary-light px-2 py-1 text-xs text-primary"
+                              className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-sm"
                             >
-                              {topic}
+                              <span className="min-w-0 flex-1 text-foreground">{topic}</span>
                               <button
                                 type="button"
-                                className="rounded p-0.5 hover:bg-primary/10"
+                                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-neutral-100 hover:text-error"
                                 aria-label={`Remove topic ${topic}`}
                                 onClick={() => removeTopic(index)}
                               >
                                 <Icon icon={X} size="sm" />
                               </button>
-                            </span>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       ) : (
                         <p className="mt-2 text-xs text-muted-foreground">No topics added yet.</p>
                       )}
@@ -1790,7 +1864,9 @@ export function ConferenceManager({ conferences }) {
                     </p>
 
                     <div className="rounded-lg border border-border bg-background p-4">
-                      <h4 className="text-sm font-semibold text-foreground">Add speaker</h4>
+                      <h4 className="text-sm font-semibold text-foreground">
+                        {editingSpeakerId ? "Edit speaker" : "Add speaker"}
+                      </h4>
                       <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <Input
                           label="Speaker name"
@@ -1933,10 +2009,20 @@ export function ConferenceManager({ conferences }) {
                         onChange={(e) => updateSpeakerDraft("bio", e.target.value)}
                         placeholder="Short biography or expertise summary"
                       />
-                      <div className="mt-4">
-                        <Button variant="outline" size="sm" icon={Plus} onClick={addSpeaker}>
-                          Add speaker
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          icon={editingSpeakerId ? Save : Plus}
+                          onClick={saveSpeaker}
+                        >
+                          {editingSpeakerId ? "Update speaker" : "Add speaker"}
                         </Button>
+                        {editingSpeakerId ? (
+                          <Button variant="ghost" size="sm" onClick={cancelEditSpeaker}>
+                            Cancel
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
 
@@ -1982,14 +2068,24 @@ export function ConferenceManager({ conferences }) {
                                 <p className="mt-2 text-xs text-foreground">{speaker.bio}</p>
                               ) : null}
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              icon={Trash2}
-                              onClick={() => removeSpeakerById(speaker.id)}
-                            >
-                              Remove
-                            </Button>
+                            <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={Pencil}
+                                onClick={() => beginEditSpeaker(speaker)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={Trash2}
+                                onClick={() => removeSpeakerById(speaker.id)}
+                              >
+                                Remove
+                              </Button>
+                            </div>
                           </div>
                         );
                       }

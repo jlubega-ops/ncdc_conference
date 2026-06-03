@@ -1,35 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Field, FormSection } from "@/components/forms/FormLayout";
+import { UserProfileFields } from "@/components/forms/UserProfileFields";
 import { cn } from "@/lib/cn";
-import {
-  AGE_RANGES,
-  ATTENDANCE_MODES,
-  COUNTRIES,
-  COUNTRY_CODES,
-  DEFAULT_COUNTRY,
-  DEFAULT_COUNTRY_CODE,
-  GENDER_OPTIONS,
-} from "@/lib/registration/constants";
-
-const selectClass =
-  "h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
-
-/**
- * @param {{ label: string, error?: string, children: import("react").ReactNode, className?: string }} props
- */
-function Field({ label, error, children, className }) {
-  return (
-    <div className={className}>
-      <label className="mb-1.5 block text-sm font-medium text-foreground">{label}</label>
-      {children}
-      {error ? <p className="mt-1 text-xs text-error">{error}</p> : null}
-    </div>
-  );
-}
+import { DEFAULT_COUNTRY, DEFAULT_COUNTRY_CODE } from "@/lib/registration/constants";
 
 /**
  * @param {{ conference: { slug: string, title: string, requiresPayment: boolean, subThemes?: string[] } }} props
@@ -60,6 +38,53 @@ export function ConferenceRegistrationForm({ conference }) {
   const [formError, setFormError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [prefillNote, setPrefillNote] = useState("");
+  const prefillTimer = useRef(null);
+
+  useEffect(() => {
+    const email = form.email.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setPrefillNote("");
+      return;
+    }
+
+    if (prefillTimer.current) clearTimeout(prefillTimer.current);
+    prefillTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/registration/prefill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.prefill) return;
+
+        setForm((prev) => ({
+          ...prev,
+          firstName: prev.firstName || data.prefill.firstName || "",
+          middleName: prev.middleName || data.prefill.middleName || "",
+          lastName: prev.lastName || data.prefill.lastName || "",
+          gender: prev.gender || data.prefill.gender || "",
+          ageRange: prev.ageRange || data.prefill.ageRange || "",
+          countryCode: prev.countryCode || data.prefill.countryCode || DEFAULT_COUNTRY_CODE,
+          telephone: prev.telephone || data.prefill.telephone || "",
+          countryOfOrigin:
+            prev.countryOfOrigin || data.prefill.countryOfOrigin || DEFAULT_COUNTRY,
+          institution: prev.institution || data.prefill.institution || "",
+          attendanceMode: prev.attendanceMode || data.prefill.attendanceMode || "",
+        }));
+        setPrefillNote(
+          "We found an existing account for this email. Your saved details were filled in — complete any missing fields and conference-specific sections.",
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 500);
+
+    return () => {
+      if (prefillTimer.current) clearTimeout(prefillTimer.current);
+    };
+  }, [form.email]);
 
   function setField(name, value) {
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -120,13 +145,18 @@ export function ConferenceRegistrationForm({ conference }) {
       if (!res.ok) {
         if (data.errors) setErrors(data.errors);
         setFormError(data.error ?? "Registration failed. Please check your details.");
+        if (data.redirect) {
+          setSuccess(data.error ? "" : (data.message ?? ""));
+        }
         return;
       }
 
-      setSuccess(
-        data.message ??
-          "Registration received. You will be notified by email once approved.",
-      );
+      setSuccess({
+        message:
+          data.message ??
+          "Registration received. Check your email for sign-in details. Your application is pending approval.",
+        redirect: data.redirect ?? null,
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       setFormError("Network error. Please try again.");
@@ -136,13 +166,15 @@ export function ConferenceRegistrationForm({ conference }) {
   }
 
   if (success) {
+    const message = typeof success === "string" ? success : success.message;
+    const loginHref = typeof success === "object" && success.redirect ? success.redirect : "/login";
     return (
       <div className="rounded-lg border border-primary/30 bg-primary-light p-6">
         <h2 className="text-lg font-semibold text-foreground">Registration submitted</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{success}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button variant="outline" href="/login?tab=access">
-            Sign in with access key
+          <Button variant="outline" href={loginHref}>
+            Sign in
           </Button>
           <Button variant="ghost" href={`/conferences/${conference.slug}`}>
             Back to conference
@@ -153,156 +185,28 @@ export function ConferenceRegistrationForm({ conference }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8" noValidate>
+    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       {formError ? (
         <p className="rounded-md bg-error/10 px-3 py-2 text-sm text-error" role="alert">
           {formError}
         </p>
       ) : null}
 
-      <section>
-        <h2 className="text-sm font-semibold text-foreground">Your details</h2>
-        <div className="mt-3 grid gap-4 sm:grid-cols-3">
-          <Input
-            label="First name"
-            requiredMark
-            value={form.firstName}
-            onChange={(e) => setField("firstName", e.target.value)}
-            error={errors.firstName}
-          />
-          <Input
-            label="Middle name"
-            hint="Optional"
-            value={form.middleName}
-            onChange={(e) => setField("middleName", e.target.value)}
-          />
-          <Input
-            label="Last name"
-            requiredMark
-            value={form.lastName}
-            onChange={(e) => setField("lastName", e.target.value)}
-            error={errors.lastName}
-          />
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Field label="Gender *" error={errors.gender}>
-            <div className="flex gap-4">
-              {GENDER_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="gender"
-                    value={opt.value}
-                    checked={form.gender === opt.value}
-                    onChange={() => setField("gender", opt.value)}
-                  />
-                  {opt.label}
-                </label>
-              ))}
-            </div>
-          </Field>
-          <Field label="Age range *" error={errors.ageRange}>
-            <select
-              value={form.ageRange}
-              onChange={(e) => setField("ageRange", e.target.value)}
-              className={cn(selectClass, errors.ageRange && "border-error")}
-            >
-              <option value="">Select…</option>
-              {AGE_RANGES.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </section>
+      {prefillNote ? (
+        <p className="rounded-md border border-primary/25 bg-primary-light px-4 py-3 text-sm text-primary">
+          {prefillNote}
+        </p>
+      ) : null}
 
-      <section>
-        <h2 className="text-sm font-semibold text-foreground">Contact</h2>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Email"
-            type="email"
-            requiredMark
-            value={form.email}
-            onChange={(e) => setField("email", e.target.value)}
-            error={errors.email}
-          />
-          <div className="grid gap-4 sm:col-span-1 sm:grid-cols-5">
-            <Field label="Code *" error={errors.countryCode} className="sm:col-span-2">
-              <select
-                value={form.countryCode}
-                onChange={(e) => setField("countryCode", e.target.value)}
-                className={cn(selectClass, errors.countryCode && "border-error")}
-              >
-                {COUNTRY_CODES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Input
-              label="Telephone"
-              requiredMark
-              className="sm:col-span-3"
-              value={form.telephone}
-              onChange={(e) => setField("telephone", e.target.value.replace(/\s/g, ""))}
-              error={errors.telephone}
-              hint="Without leading 0 (e.g. 712345678)"
-              inputMode="numeric"
-            />
-          </div>
-        </div>
-      </section>
+      <UserProfileFields
+        values={form}
+        errors={errors}
+        onChange={setField}
+        email={form.email}
+        onEmailChange={(value) => setField("email", value)}
+      />
 
-      <section>
-        <h2 className="text-sm font-semibold text-foreground">Background</h2>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Field label="Country of origin *" error={errors.countryOfOrigin}>
-            <select
-              value={form.countryOfOrigin}
-              onChange={(e) => setField("countryOfOrigin", e.target.value)}
-              className={cn(selectClass, errors.countryOfOrigin && "border-error")}
-            >
-              {COUNTRIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Input
-            label="Institution"
-            requiredMark
-            value={form.institution}
-            onChange={(e) => setField("institution", e.target.value)}
-            error={errors.institution}
-          />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-foreground">Conference preferences</h2>
-        <div className="mt-3 space-y-4">
-          <Field label="Mode of attendance *" error={errors.attendanceMode}>
-            <div className="flex gap-4">
-              {ATTENDANCE_MODES.map((m) => (
-                <label key={m.value} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="attendanceMode"
-                    value={m.value}
-                    checked={form.attendanceMode === m.value}
-                    onChange={() => setField("attendanceMode", m.value)}
-                  />
-                  {m.label}
-                </label>
-              ))}
-            </div>
-          </Field>
-
+      <FormSection title="Conference preferences">
           {subThemes.length > 0 ? (
             <Field
               label="Sub-theme(s) * — select at least one"
@@ -331,13 +235,11 @@ export function ConferenceRegistrationForm({ conference }) {
               </div>
             </Field>
           ) : null}
-        </div>
-      </section>
+      </FormSection>
 
       {conference.requiresPayment ? (
-        <section>
-          <h2 className="text-sm font-semibold text-foreground">Payment</h2>
-          <Field label="Proof of payment *" error={errors.paymentProof} className="mt-3">
+        <FormSection title="Payment">
+          <Field label="Proof of payment *" error={errors.paymentProof}>
             <input
               type="file"
               accept=".pdf,image/jpeg,image/png,image/webp"
@@ -353,12 +255,10 @@ export function ConferenceRegistrationForm({ conference }) {
             />
             <p className="mt-1 text-xs text-muted-foreground">PDF or image, max 5MB.</p>
           </Field>
-        </section>
+        </FormSection>
       ) : null}
 
-      <section>
-        <h2 className="text-sm font-semibold text-foreground">Additional information</h2>
-        <div className="mt-3 space-y-4">
+      <FormSection title="Additional information">
           <Field label="What are your expectations for the conference?">
             <textarea
               rows={2}
@@ -418,18 +318,14 @@ export function ConferenceRegistrationForm({ conference }) {
               error={errors.disabilityDetails}
             />
           ) : null}
-        </div>
-      </section>
+      </FormSection>
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-primary-light/40 px-4 py-4">
         <Button type="submit" variant="primary" disabled={loading}>
           {loading ? "Submitting…" : "Submit registration"}
         </Button>
-        <Link
-          href="/login?tab=access"
-          className="text-sm text-muted-foreground hover:text-primary"
-        >
-          Already registered? Sign in
+        <Link href="/login" className="text-sm text-muted-foreground hover:text-primary">
+          Already have an account? Sign in
         </Link>
       </div>
     </form>

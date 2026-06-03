@@ -1,10 +1,12 @@
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { UsersAdmin } from "@/components/dashboard/UsersAdmin";
+import { requireSuperadminPage } from "@/lib/auth/guards";
 
-export default function UsersPage() {
-  return (
-    <PlaceholderPage
-      title="Users"
-      description="Manage platform users and role assignments."
-    />
-  );
+export const metadata = {
+  title: "Users | NCDC Dashboard",
+};
+
+export default async function UsersPage() {
+  await requireSuperadminPage("/dashboard/users");
+
+  return <UsersAdmin />;
 }

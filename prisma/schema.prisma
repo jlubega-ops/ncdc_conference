@@ -30,6 +30,7 @@ enum ConferenceLifecycleStatus {
 
 enum RegistrationStatus {
   PENDING
+  NEEDS_REVISION
   CONFIRMED
   CANCELLED
 }
@@ -38,27 +39,41 @@ enum PaperSubmissionStatus {
   DRAFT
   SUBMITTED
   UNDER_REVIEW
+  NEEDS_REVISION
   ACCEPTED
   REJECTED
   WITHDRAWN
 }
 
+enum ConferenceResourceType {
+  MATERIAL
+  PAPER_TEMPLATE
+  PRESENTATION_TEMPLATE
+}
+
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String?
-  name         String?
-  image        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String?
+  mustChangePassword Boolean   @default(false)
+  passwordResetToken String?   @unique
+  passwordResetExpires DateTime?
+  name               String?
+  image              String?
+  profileData        Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   roles                UserRole[]
   sessions             Session[]
   conferenceAccessKeys ConferenceAccessKey[]
   conferencesCreated   Conference[]             @relation("ConferenceCreator")
   registrations        ConferenceRegistration[]
-  paperSubmissions     PaperSubmission[]
-  conferenceFeedback   ConferenceFeedback[]
+  attendanceMarks      ConferenceAttendance[]
+  paperSubmissions       PaperSubmission[]
+  papersAssignedReview   PaperSubmission[]      @relation("PaperAssignedReviewer")
+  conferenceFeedback     ConferenceFeedback[]
+  certificates           ConferenceCertificate[]
 
   @@map("users")
 }
@@ -137,8 +152,12 @@ model Conference {
   roles          UserRole[]
   accessKeys     ConferenceAccessKey[]
   registrations  ConferenceRegistration[]
+  attendance     ConferenceAttendance[]
   submissions    PaperSubmission[]
   feedback       ConferenceFeedback[]
+  resources      ConferenceResource[]
+  presentations  ConferencePresentation[]
+  certificates   ConferenceCertificate[]
 
   @@index([publicationStatus])
   @@index([featured])
@@ -168,16 +187,19 @@ model ConferenceAccessKey {
 }
 
 model ConferenceRegistration {
-  id              String             @id @default(cuid())
-  conferenceId    String
-  userId          String
-  status          RegistrationStatus @default(PENDING)
-  paymentStatus   String?
-  paymentProofUrl String?
-  formData        Json?
-  notes           String?            @db.Text
-  registeredAt    DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id                 String             @id @default(cuid())
+  conferenceId       String
+  userId             String
+  status             RegistrationStatus @default(PENDING)
+  paymentStatus      String?
+  paymentProofFileId String?
+  formData           Json?
+  adminNotes         String?            @db.Text
+  improvementRequest String?            @db.Text
+  reviewedAt         DateTime?
+  reviewedById       String?
+  registeredAt       DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -187,23 +209,71 @@ model ConferenceRegistration {
   @@map("conference_registrations")
 }
 
-model PaperSubmission {
-  id           String                @id @default(cuid())
+model ConferenceAttendance {
+  id           String   @id @default(cuid())
   conferenceId String
   userId       String
-  title        String
-  abstract     String?               @db.Text
-  fileUrl      String?
-  status       PaperSubmissionStatus @default(DRAFT)
-  submittedAt  DateTime?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  dayDate      String   @db.VarChar(10)
+  dayIndex     Int      @default(1)
+  markedAt     DateTime @default(now())
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([conferenceId, userId, dayDate])
+  @@index([conferenceId, dayDate])
+  @@index([userId])
+  @@map("conference_attendance")
+}
+
+model ConferenceCertificate {
+  id                String   @id @default(cuid())
+  certificateNumber String   @unique @db.VarChar(64)
+  conferenceId      String
+  userId            String
+  recipientName     String
+  attendancePercent Int
+  daysAttended      Int
+  totalDays         Int
+  issuedAt          DateTime @default(now())
+  emailedAt         DateTime?
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conferenceId, userId])
+  @@index([certificateNumber])
+  @@map("conference_certificates")
+}
+
+model PaperSubmission {
+  id                      String                @id @default(cuid())
+  conferenceId            String
+  userId                  String
+  title                   String
+  abstract                String?               @db.Text
+  fileUrl                 String?
+  fileId                  String?
+  status                  PaperSubmissionStatus @default(DRAFT)
+  improvementRequest      String?               @db.Text
+  reviewNotes             String?               @db.Text
+  reviewedAt              DateTime?
+  reviewedById            String?
+  assignedReviewerId      String?
+  authorHasUnreadFeedback Boolean               @default(false)
+  isFinalApproved         Boolean               @default(false)
+  activityLog             Json?
+  submittedAt             DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  conference       Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedReviewer User?      @relation("PaperAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
+
   @@index([conferenceId])
   @@index([userId])
+  @@index([assignedReviewerId])
   @@map("paper_submissions")
 }
 
@@ -221,4 +291,42 @@ model ConferenceFeedback {
 
   @@index([conferenceId])
   @@map("conference_feedback")
+}
+
+model ConferenceResource {
+  id           String                 @id @default(cuid())
+  conferenceId String
+  type         ConferenceResourceType
+  title        String
+  description  String?                @db.Text
+  fileId       String
+  fileName     String?
+  sortOrder    Int                    @default(0)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  @@index([conferenceId, type])
+  @@map("conference_resources")
+}
+
+model ConferencePresentation {
+  id           String   @id @default(cuid())
+  conferenceId String
+  title        String
+  speakerName  String?
+  speakerTitle String?
+  sessionLabel String?
+  description  String?  @db.Text
+  fileId       String?
+  fileName     String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+
+  @@index([conferenceId])
+  @@map("conference_presentations")
 }

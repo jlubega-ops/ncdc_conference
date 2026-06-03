@@ -1,6 +1,11 @@
-import { DashboardHome } from "@/components/dashboard/DashboardHome";
+import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { getDashboardOverview } from "@/lib/dashboard/overview";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
+
+export const metadata = {
+  title: "Overview | NCDC Dashboard",
+};
 
 export default async function DashboardPage() {
   let session = null;
@@ -14,5 +19,7 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  return <DashboardHome session={session} />;
+  const overview = await getDashboardOverview(session);
+
+  return <DashboardOverview session={session} data={overview} />;
 }

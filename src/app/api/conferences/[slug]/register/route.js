@@ -1,14 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { savePrivateUpload } from "@/lib/storage/secure-files";
 import { validateRegistrationForm } from "@/lib/registration/validation";
+import { generateTemporaryPassword } from "@/lib/auth/credentials";
 import {
   findExistingRegistration,
   getConferenceForRegistration,
+  registerUserForConference,
   registrationConflictResponse,
 } from "@/lib/registration/service";
+import { mergeRegistrationWithProfile } from "@/lib/users/profile";
 
 export const runtime = "nodejs";
 
@@ -22,9 +22,8 @@ const ALLOWED_PROOF_TYPES = new Set([
 
 /**
  * @param {File} file
- * @param {string} conferenceId
  */
-async function savePaymentProof(file, conferenceId) {
+async function savePaymentProof(file) {
   if (!(file instanceof File) || file.size === 0) return null;
   if (!ALLOWED_PROOF_TYPES.has(file.type)) {
     throw new Error("Payment proof must be a PDF, JPG, PNG, or WEBP file.");
@@ -32,22 +31,7 @@ async function savePaymentProof(file, conferenceId) {
   if (file.size > MAX_PROOF_BYTES) {
     throw new Error("Payment proof must be 5MB or smaller.");
   }
-
-  const ext =
-    file.type === "application/pdf"
-      ? "pdf"
-      : file.type === "image/png"
-        ? "png"
-        : file.type === "image/webp"
-          ? "webp"
-          : "jpg";
-
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "payment-proofs", conferenceId);
-  await mkdir(uploadDir, { recursive: true });
-  const filename = `${Date.now()}-${randomUUID()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(uploadDir, filename), buffer);
-  return `/uploads/payment-proofs/${conferenceId}/${filename}`;
+  return savePrivateUpload(file, "payment-proofs");
 }
 
 export async function POST(request, { params }) {
@@ -61,8 +45,7 @@ export async function POST(request, { params }) {
     if (!ctx.registrable) {
       return NextResponse.json(
         {
-          error:
-            "Registration is only open for upcoming or currently running conferences.",
+          error: "Registration is not open for this conference.",
           code: "CONFERENCE_CLOSED",
         },
         { status: 400 },
@@ -116,32 +99,32 @@ export async function POST(request, { params }) {
       return NextResponse.json({ errors, error: "Please fix the highlighted fields." }, { status: 400 });
     }
 
-    const staffRoles = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"];
-    let { user, registration } = await findExistingRegistration(raw.id, values.email);
+    const { user, registration } = await findExistingRegistration(raw.id, values.email);
 
-    if (user?.roles.some((r) => staffRoles.includes(r.role))) {
-      return NextResponse.json(
-        {
-          error: "This email is registered as staff. Use staff sign-in instead.",
-          code: "STAFF_ACCOUNT",
-        },
-        { status: 400 },
+    let finalValues = values;
+    if (user) {
+      finalValues = mergeRegistrationWithProfile(user, values);
+      const { errors: revalidateErrors } = validateRegistrationForm(
+        { ...finalValues, hasPaymentProof },
+        { requiresPayment: Boolean(conference.requiresPayment), subThemes },
       );
+      if (Object.keys(revalidateErrors).length > 0) {
+        return NextResponse.json(
+          { errors: revalidateErrors, error: "Please fix the highlighted fields." },
+          { status: 400 },
+        );
+      }
     }
 
     if (registration) {
-      const conflict = registrationConflictResponse({
-        conference: raw,
-        registration,
-        mapped: conference,
-      });
+      const conflict = registrationConflictResponse({ conference, registration });
       return NextResponse.json(conflict.body, { status: conflict.status });
     }
 
-    let paymentProofUrl = null;
+    let paymentProofFileId = null;
     if (conference.requiresPayment) {
-      paymentProofUrl = await savePaymentProof(paymentProofFile, raw.id);
-      if (!paymentProofUrl) {
+      paymentProofFileId = await savePaymentProof(paymentProofFile);
+      if (!paymentProofFileId) {
         return NextResponse.json(
           { errors: { paymentProof: "Proof of payment is required." } },
           { status: 400 },
@@ -149,45 +132,37 @@ export async function POST(request, { params }) {
       }
     }
 
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: values.email,
-          name: values.fullName,
-        },
-        include: { roles: true },
-      });
-    } else if (!user.name) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { name: values.fullName },
-        include: { roles: true },
-      });
-    }
+    const isNewUser = !user;
+    const tempPassword = isNewUser ? generateTemporaryPassword() : null;
 
-    await prisma.conferenceRegistration.create({
-      data: {
-        conferenceId: raw.id,
-        userId: user.id,
-        status: "PENDING",
-        paymentStatus: conference.requiresPayment ? "pending_verification" : null,
-        paymentProofUrl,
-        formData: values,
-      },
+    const result = await registerUserForConference({
+      conference,
+      conferenceId: raw.id,
+      values: finalValues,
+      paymentProofFileId,
+      isNewUser,
+      tempPassword,
     });
 
-    const hasAttendee = user.roles.some(
-      (r) => r.role === "ATTENDEE" && r.conferenceId === raw.id,
-    );
-    if (!hasAttendee) {
-      await prisma.userRole.create({
-        data: { userId: user.id, role: "ATTENDEE", conferenceId: raw.id },
+    const emailNote = result.emailSent
+      ? ""
+      : " We could not send the notification email — contact the organisers if you need sign-in help.";
+
+    if (isNewUser) {
+      return NextResponse.json({
+        ok: true,
+        isNewUser: true,
+        emailSent: result.emailSent,
+        message: `Registration received for ${conference.title}. Check your email for sign-in details. Your application is pending approval.${emailNote}`,
       });
     }
 
     return NextResponse.json({
       ok: true,
-      message: `Registration received for ${conference.title}. You will be notified by email once your application is approved.`,
+      isNewUser: false,
+      emailSent: result.emailSent,
+      redirect: "/login",
+      message: `Application received for ${conference.title}. Sign in with your existing account to track your status.${emailNote}`,
     });
   } catch (err) {
     console.error("Conference registration error:", err);

@@ -33,7 +33,8 @@ export function ConferenceSearch({ conferences = [] }) {
       const matchesQuery =
         !query ||
         c.title.toLowerCase().includes(query.toLowerCase()) ||
-        c.shortDescription.toLowerCase().includes(query.toLowerCase());
+        c.shortDescription.toLowerCase().includes(query.toLowerCase()) ||
+        c.description?.toLowerCase().includes(query.toLowerCase());
       const matchesYear = !year || c.year === Number(year);
       const matchesCategory = !category || c.category === category;
       const matchesStatus = !status || c.status === status;

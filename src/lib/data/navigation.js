@@ -1,17 +1,36 @@
-export const mainNavLinks = [
+/** Links shown to visitors who are not signed in */
+export const publicNavLinks = [
   { label: "Home", href: "/" },
   { label: "Conferences", href: "/conferences" },
-  { label: "Call for Papers", href: "/call-for-papers" },
   { label: "Resources", href: "/resources" },
   { label: "About", href: "/about" },
-  { label: "Contact", href: "/contact" },
 ];
 
-export const authNavLinks = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "My Submissions", href: "/dashboard/submissions" },
-  { label: "My Registrations", href: "/dashboard/registrations" },
+/** Compact header links when signed in as attendee */
+export const attendeeHeaderNav = [
+  { label: "Conferences", href: "/conferences" },
+  { label: "My registrations", href: "/dashboard/my-registrations" },
 ];
+
+/** Compact header links when signed in as staff */
+export const staffHeaderNav = [
+  { label: "Conferences", href: "/conferences" },
+  { label: "Dashboard", href: "/dashboard" },
+];
+
+const STAFF_ROLES = new Set(["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"]);
+
+/**
+ * @param {{ activeRole?: string } | null} session
+ */
+export function getHeaderNavLinks(session) {
+  if (!session?.activeRole) return publicNavLinks;
+  if (STAFF_ROLES.has(session.activeRole)) return staffHeaderNav;
+  return attendeeHeaderNav;
+}
+
+/** @deprecated Use publicNavLinks */
+export const mainNavLinks = publicNavLinks;
 
 export const footerLinks = {
   about: [

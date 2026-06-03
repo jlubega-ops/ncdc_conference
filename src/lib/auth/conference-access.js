@@ -30,6 +30,15 @@ export function getManagedConferenceIds(session) {
 /**
  * @param {Awaited<ReturnType<import("@/lib/auth/session").getCurrentSession>>} session
  */
+export function isSuperadminUser(session) {
+  if (!session) return false;
+  if (session.activeRole === "SUPERADMIN") return true;
+  return session.roles?.some((r) => r.role === "SUPERADMIN") ?? false;
+}
+
+/**
+ * @param {Awaited<ReturnType<import("@/lib/auth/session").getCurrentSession>>} session
+ */
 export function canAssignConferenceAdmins(session) {
-  return session?.activeRole === "SUPERADMIN";
+  return isSuperadminUser(session);
 }

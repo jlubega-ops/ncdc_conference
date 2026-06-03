@@ -1,24 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { UserPlus, X } from "lucide-react";
+import { RefreshCw, Shield, UserMinus, UserPlus } from "lucide-react";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Input } from "@/components/ui/Input";
+import { Icon } from "@/components/ui/Icon";
+import { cn } from "@/lib/cn";
+import { GENDER_OPTIONS } from "@/lib/registration/constants";
 import { formatAdminDate } from "./AdminTabShell";
 
 /**
- * @param {{ conferenceId: string, canAssign: boolean }} props
+ * @param {{ conferenceId: string; canAssign?: boolean }} props
  */
-export function ConferenceAdminAdminsTab({ conferenceId, canAssign }) {
+export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignProp }) {
   const [admins, setAdmins] = useState([]);
+  const [canAssign, setCanAssign] = useState(Boolean(canAssignProp));
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
+  const [candidates, setCandidates] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [assigning, setAssigning] = useState(false);
+  const [busyId, setBusyId] = useState(null);
   const [mode, setMode] = useState("existing");
-  const [newUser, setNewUser] = useState({ email: "", name: "", password: "" });
+  const [newUser, setNewUser] = useState({
+    email: "",
+    firstName: "",
+    lastName: "",
+    gender: "M",
+  });
+  const [unassignTarget, setUnassignTarget] = useState(null);
 
   const loadAdmins = useCallback(async () => {
     setLoading(true);
@@ -27,6 +38,9 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load conference admins.");
       setAdmins(data.admins ?? []);
+      if (typeof data.canAssign === "boolean") {
+        setCanAssign(data.canAssign || Boolean(canAssignProp));
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load conference admins.");
       setAdmins([]);
@@ -39,36 +53,58 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign }) {
     loadAdmins();
   }, [loadAdmins]);
 
+  const fetchCandidates = useCallback(
+    async (query) => {
+      const q = query.trim();
+      if (q.length < 2) {
+        setCandidates([]);
+        return;
+      }
+      setSearching(true);
+      try {
+        const res = await fetch(
+          `/api/admin/conferences/${conferenceId}/admins/candidates?q=${encodeURIComponent(q)}`,
+        );
+        const data = await res.json();
+        if (res.ok) {
+          setCandidates(data.candidates ?? []);
+        } else {
+          setCandidates([]);
+          toast.error(data.error || "Could not search users.");
+        }
+      } catch {
+        setCandidates([]);
+      } finally {
+        setSearching(false);
+      }
+    },
+    [conferenceId],
+  );
+
   useEffect(() => {
     if (!canAssign || mode !== "existing") {
-      setSearchResults([]);
+      setCandidates([]);
       return;
     }
 
     const q = searchQuery.trim();
     if (q.length < 2) {
-      setSearchResults([]);
+      setCandidates([]);
       return;
     }
 
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await fetch(`/api/admin/users/search?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        if (res.ok) setSearchResults(data.users ?? []);
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-
+    const timer = setTimeout(() => fetchCandidates(q), 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, canAssign, mode]);
+  }, [searchQuery, canAssign, mode, fetchCandidates]);
+
+  function markCandidateAssigned(userId, assigned) {
+    setCandidates((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, alreadyAssigned: assigned } : u)),
+    );
+  }
 
   async function assignExisting(userId) {
-    setAssigning(true);
+    setBusyId(userId);
     try {
       const res = await fetch(`/api/admin/conferences/${conferenceId}/admins`, {
         method: "POST",
@@ -78,19 +114,18 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not assign admin.");
       setAdmins(data.admins ?? []);
-      setSearchQuery("");
-      setSearchResults([]);
+      markCandidateAssigned(userId, true);
       toast.success(data.message || "Conference admin assigned.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not assign admin.");
     } finally {
-      setAssigning(false);
+      setBusyId(null);
     }
   }
 
   async function assignNew(event) {
     event.preventDefault();
-    setAssigning(true);
+    setBusyId("new");
     try {
       const res = await fetch(`/api/admin/conferences/${conferenceId}/admins`, {
         method: "POST",
@@ -100,62 +135,152 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not create admin.");
       setAdmins(data.admins ?? []);
-      setNewUser({ email: "", name: "", password: "" });
+      setNewUser({ email: "", firstName: "", lastName: "", gender: "M" });
       toast.success(data.message || "Conference admin created and assigned.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create admin.");
     } finally {
-      setAssigning(false);
+      setBusyId(null);
     }
   }
 
-  async function removeAdmin(userId) {
-    if (!window.confirm("Remove this user as conference admin?")) return;
+  function requestUnassign(userId, displayName, fromSearch = false) {
+    setUnassignTarget({ userId, displayName, fromSearch });
+  }
+
+  async function confirmUnassign() {
+    if (!unassignTarget) return;
+    const { userId, fromSearch } = unassignTarget;
+    setBusyId(userId);
     try {
       const res = await fetch(
         `/api/admin/conferences/${conferenceId}/admins?userId=${encodeURIComponent(userId)}`,
         { method: "DELETE" },
       );
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not remove admin.");
-      setAdmins((prev) => prev.filter((a) => a.userId !== userId));
-      toast.success(data.message || "Conference admin removed.");
+      if (!res.ok) throw new Error(data.error || "Could not unassign admin.");
+      setAdmins(data.admins ?? []);
+      if (fromSearch) markCandidateAssigned(userId, false);
+      toast.success(data.message || "Conference admin unassigned.");
+      setUnassignTarget(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not remove admin.");
+      toast.error(e instanceof Error ? e.message : "Could not unassign admin.");
+    } finally {
+      setBusyId(null);
     }
   }
 
-  const assignedIds = new Set(admins.map((a) => a.userId));
-
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Conference admins can only view and manage conferences they are assigned to.
-      </p>
+      <div className="rounded-md border border-primary/20 bg-primary-light/40 px-4 py-3 text-sm text-foreground">
+        <p className="font-medium text-primary">Conference admins</p>
+        <p className="mt-1 text-muted-foreground">
+          Users listed here can manage this conference (registrations, submissions, materials,
+          etc.). Super admins can manage all conferences without being listed.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading assigned admins…</p>
+      ) : admins.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+          No conference admins assigned to this conference yet.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Assigned ({admins.length})
+          </p>
+          <ul className="space-y-2">
+            {admins.map((admin) => (
+              <li
+                key={admin.roleId}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background px-4 py-3"
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-light text-sm font-semibold text-primary">
+                    {(admin.displayName || admin.email || "?").charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-foreground">
+                        {admin.displayName || admin.name || "—"}
+                      </p>
+                      {admin.isCurrentUser ? (
+                        <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-muted-foreground">
+                          You
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{admin.email}</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                      <span
+                        className={cn(
+                          "rounded-md px-2 py-0.5 font-medium",
+                          admin.accountActivated
+                            ? "bg-primary-light text-primary"
+                            : "bg-amber-50 text-amber-900",
+                        )}
+                      >
+                        {admin.accountActivated ? "Account active" : "Pending activation"}
+                      </span>
+                      <span className="text-muted-foreground">
+                        Assigned {formatAdminDate(admin.assignedAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {canAssign ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={UserMinus}
+                    disabled={busyId === admin.userId}
+                    onClick={() =>
+                      requestUnassign(
+                        admin.userId,
+                        admin.displayName || admin.email,
+                        false,
+                      )
+                    }
+                  >
+                    {busyId === admin.userId ? "Removing…" : "Unassign"}
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {canAssign ? (
-        <div className="rounded-md border border-border bg-background p-4">
-          <h3 className="text-sm font-semibold text-foreground">Assign conference admin</h3>
-          <div className="mt-3 flex gap-2">
+        <div className="rounded-lg border border-border bg-background p-4 sm:p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Icon icon={UserPlus} size="sm" className="text-primary" />
+            Assign conference admin
+          </h3>
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setMode("existing")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 mode === "existing"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-surface text-muted-foreground hover:text-foreground"
-              }`}
+                  : "bg-surface text-muted-foreground hover:text-foreground",
+              )}
             >
               Existing user
             </button>
             <button
               type="button"
               onClick={() => setMode("new")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 mode === "new"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-surface text-muted-foreground hover:text-foreground"
-              }`}
+                  : "bg-surface text-muted-foreground hover:text-foreground",
+              )}
             >
               Create new user
             </button>
@@ -168,127 +293,167 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Type at least 2 characters…"
+                hint="Search by email (e.g. user@example.com). Super admins can be listed for this conference but already have full system access."
               />
               {searching ? (
-                <p className="mt-2 text-xs text-muted-foreground">Searching…</p>
+                <p className="mt-2 text-xs text-muted-foreground">Searching users…</p>
               ) : null}
-              {searchResults.length > 0 ? (
+              {searchQuery.trim().length >= 2 && !searching && candidates.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">No users found.</p>
+              ) : null}
+              {candidates.length > 0 ? (
                 <ul className="mt-3 space-y-2">
-                  {searchResults.map((user) => (
+                  {candidates.map((user) => (
                     <li
                       key={user.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                      className="flex items-center gap-3 rounded-md border border-border px-3 py-3"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">
-                          {user.name || user.email}
+                          {user.displayName}
                         </p>
                         <p className="text-xs text-muted-foreground">{user.email}</p>
+                        {user.alreadyAssigned ? (
+                          <p className="mt-1 text-xs font-medium text-primary">
+                            Already assigned to this conference
+                          </p>
+                        ) : null}
+                        {user.roles?.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {user.roles.map((r, i) => (
+                              <span
+                                key={`${r.role}-${i}`}
+                                className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                              >
+                                {r.label}
+                                {r.conferenceTitle ? ` · ${r.conferenceTitle}` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                      {assignedIds.has(user.id) ? (
-                        <span className="text-xs text-muted-foreground">Already assigned</span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          icon={UserPlus}
-                          disabled={assigning}
-                          onClick={() => assignExisting(user.id)}
-                        >
-                          Assign
-                        </Button>
-                      )}
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        {user.isSuperadmin ? (
+                          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <Icon icon={Shield} size="sm" />
+                            System super admin
+                          </span>
+                        ) : null}
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {user.alreadyAssigned ? (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                icon={RefreshCw}
+                                disabled={busyId === user.id}
+                                onClick={() => assignExisting(user.id)}
+                              >
+                                {busyId === user.id ? "Saving…" : "Reassign"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                icon={UserMinus}
+                                disabled={busyId === user.id}
+                                onClick={() =>
+                                  requestUnassign(
+                                    user.id,
+                                    user.displayName || user.email,
+                                    true,
+                                  )
+                                }
+                              >
+                                Unassign
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              icon={UserPlus}
+                              className="min-w-22 whitespace-nowrap"
+                              disabled={busyId === user.id}
+                              onClick={() => assignExisting(user.id)}
+                            >
+                              {busyId === user.id ? "Assigning…" : "Assign"}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </li>
                   ))}
                 </ul>
               ) : null}
             </div>
           ) : (
-            <form onSubmit={assignNew} className="mt-4 grid gap-3 sm:grid-cols-2">
+            <form onSubmit={assignNew} className="mt-4 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  label="First name"
+                  requiredMark
+                  value={newUser.firstName}
+                  onChange={(e) => setNewUser((s) => ({ ...s, firstName: e.target.value }))}
+                />
+                <Input
+                  label="Last name"
+                  requiredMark
+                  value={newUser.lastName}
+                  onChange={(e) => setNewUser((s) => ({ ...s, lastName: e.target.value }))}
+                />
+              </div>
               <Input
                 label="Email"
                 type="email"
-                required
+                requiredMark
                 value={newUser.email}
                 onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))}
               />
-              <Input
-                label="Full name"
-                value={newUser.name}
-                onChange={(e) => setNewUser((s) => ({ ...s, name: e.target.value }))}
-              />
-              <div className="sm:col-span-2">
-                <Input
-                  label="Password"
-                  type="password"
-                  required
-                  hint="Minimum 8 characters. Used for staff login."
-                  value={newUser.password}
-                  onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))}
-                />
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-foreground">Gender</p>
+                <div className="flex gap-4">
+                  {GENDER_OPTIONS.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        checked={newUser.gender === opt.value}
+                        onChange={() => setNewUser((s) => ({ ...s, gender: opt.value }))}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="sm:col-span-2">
-                <Button type="submit" icon={UserPlus} disabled={assigning}>
-                  Create and assign
-                </Button>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                A temporary password is emailed; they must change it on first login.
+              </p>
+              <Button type="submit" icon={UserPlus} disabled={busyId === "new"}>
+                {busyId === "new" ? "Creating…" : "Create & assign"}
+              </Button>
             </form>
           )}
         </div>
-      ) : null}
-
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading conference admins…</p>
-      ) : admins.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-          No conference admins assigned yet.
-        </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-background">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Admin
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Assigned
-                </th>
-                {canAssign ? (
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Actions
-                  </th>
-                ) : null}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-surface">
-              {admins.map((admin) => (
-                <tr key={admin.userId}>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{admin.name || "—"}</p>
-                    <p className="text-xs text-muted-foreground">{admin.email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {formatAdminDate(admin.assignedAt)}
-                  </td>
-                  {canAssign ? (
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={X}
-                        onClick={() => removeAdmin(admin.userId)}
-                      >
-                        Remove
-                      </Button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Only super admins can assign or unassign conference admins.
+        </p>
       )}
+
+      <ConfirmModal
+        open={Boolean(unassignTarget)}
+        onClose={() => !busyId && setUnassignTarget(null)}
+        onConfirm={confirmUnassign}
+        title="Unassign conference admin"
+        message={
+          unassignTarget
+            ? `Remove ${unassignTarget.displayName} as conference admin for this conference? They will no longer be able to manage this conference.`
+            : ""
+        }
+        confirmLabel="Unassign"
+        cancelLabel="Cancel"
+        variant="danger"
+        loading={Boolean(unassignTarget && busyId === unassignTarget.userId)}
+      />
     </div>
   );
 }

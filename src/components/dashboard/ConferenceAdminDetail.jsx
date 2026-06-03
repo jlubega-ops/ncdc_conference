@@ -1,12 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import {
-  ArrowLeft,
-  Pencil,
-  CircleDot,
-} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Pencil, CircleDot } from "lucide-react";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -22,25 +18,74 @@ import { ConferenceAdminRegistrationsTab } from "@/components/dashboard/admin-ta
 import { ConferenceAdminSubmissionsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminSubmissionsTab";
 import { ConferenceAdminFeedbackTab } from "@/components/dashboard/admin-tabs/ConferenceAdminFeedbackTab";
 import { ConferenceAdminAdminsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminAdminsTab";
+import { ConferenceAdminMaterialsHub } from "@/components/dashboard/admin-tabs/ConferenceAdminMaterialsHub";
 
 const BASE_TABS = [
-  { id: "info", label: "Info" },
-  { id: "registrations", label: "Registrations" },
-  { id: "submissions", label: "Submitted Papers" },
-  { id: "feedback", label: "Evaluations & comments" },
-  { id: "admins", label: "Conference admins" },
+  { id: "info", label: "Info", countKey: null },
+  { id: "registrations", label: "Registrations", countKey: "registrations" },
+  { id: "submissions", label: "Paper submissions", countKey: "submissions" },
+  { id: "feedback", label: "Evaluations & comments", countKey: "feedback" },
+  { id: "materials", label: "Materials", countKey: null },
+  { id: "admins", label: "Conference admins", countKey: "admins" },
 ];
 
+const TAB_BACK_LINKS = {
+  submissions: { href: "/dashboard/submissions", label: "Paper submissions" },
+  registrations: { href: "/dashboard/registrations", label: "Registrations" },
+  feedback: { href: "/dashboard/reviews", label: "Evaluations & comments" },
+};
+
+const VALID_TAB_IDS = new Set(BASE_TABS.map((t) => t.id));
+
 /**
- * @param {{ conference: any, canAssignAdmins?: boolean }} props
+ * @param {{ conference: any; canAssignAdmins?: boolean; initialTab?: string }} props
  */
-export function ConferenceAdminDetail({ conference: initial, canAssignAdmins = false }) {
+export function ConferenceAdminDetail({
+  conference: initial,
+  canAssignAdmins = false,
+  initialTab = "info",
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [conference, setConference] = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("info");
+  const [activeTab, setActiveTab] = useState(
+    VALID_TAB_IDS.has(initialTab) ? initialTab : "info",
+  );
+  const [stats, setStats] = useState(null);
 
   const tabs = useMemo(() => BASE_TABS, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStats() {
+      try {
+        const res = await fetch(`/api/admin/conferences/${conference.id}/stats`);
+        const data = await res.json();
+        if (!cancelled && res.ok) setStats(data);
+      } catch {
+        /* ignore */
+      }
+    }
+    loadStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [conference.id]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && VALID_TAB_IDS.has(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  function selectTab(tabId) {
+    setActiveTab(tabId);
+    router.replace(`/dashboard/manage/${conference.id}?tab=${tabId}`, { scroll: false });
+  }
+
+  const sectionBack = TAB_BACK_LINKS[activeTab];
 
   async function togglePublication() {
     const nextStatus = conference.publicationStatus === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
@@ -85,9 +130,15 @@ export function ConferenceAdminDetail({ conference: initial, canAssignAdmins = f
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="sm" icon={ArrowLeft} href="/dashboard/manage">
-          Back to listing
-        </Button>
+        {sectionBack ? (
+          <Button variant="ghost" size="sm" icon={ArrowLeft} href={sectionBack.href}>
+            Back to {sectionBack.label}
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" icon={ArrowLeft} href="/dashboard/manage">
+            Back to listing
+          </Button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -130,21 +181,40 @@ export function ConferenceAdminDetail({ conference: initial, canAssignAdmins = f
           className="flex gap-1 overflow-x-auto border-b border-border px-5 sm:px-6"
           aria-label="Conference management sections"
         >
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
-                activeTab === tab.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            let count = null;
+            if (stats && tab.countKey === "registrations") count = stats.registrations?.total;
+            if (stats && tab.countKey === "submissions") count = stats.submissions?.total;
+            if (stats && tab.countKey === "feedback") count = stats.feedback?.total;
+            if (stats && tab.countKey === "admins") count = stats.admins?.total;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => selectTab(tab.id)}
+                className={cn(
+                  "shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
+                  activeTab === tab.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tab.label}
+                {count != null ? (
+                  <span
+                    className={cn(
+                      "ml-2 rounded-full px-2 py-0.5 text-xs",
+                      activeTab === tab.id
+                        ? "bg-primary-light text-primary"
+                        : "bg-neutral-100 text-muted-foreground",
+                    )}
+                  >
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="p-5 sm:p-6">
@@ -157,6 +227,9 @@ export function ConferenceAdminDetail({ conference: initial, canAssignAdmins = f
           ) : null}
           {activeTab === "feedback" ? (
             <ConferenceAdminFeedbackTab conferenceId={conference.id} />
+          ) : null}
+          {activeTab === "materials" ? (
+            <ConferenceAdminMaterialsHub conferenceId={conference.id} />
           ) : null}
           {activeTab === "admins" ? (
             <ConferenceAdminAdminsTab

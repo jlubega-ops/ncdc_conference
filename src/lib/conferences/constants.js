@@ -29,6 +29,8 @@ export const SPEAKER_TYPES = [
   { value: "normal", label: "Speaker" },
   { value: "keynote", label: "Keynote speaker" },
   { value: "guest", label: "Guest speaker" },
+  { value: "host", label: "Host" },
+  { value: "mc", label: "MC" },
 ];
 
 export const SPEAKER_TYPE_LABELS = Object.fromEntries(

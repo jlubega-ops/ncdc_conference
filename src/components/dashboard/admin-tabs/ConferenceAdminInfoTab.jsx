@@ -9,6 +9,7 @@ import { ConferenceImage } from "@/components/ConferenceImage";
 import { PAID_VISIBILITY_OPTIONS, SPEAKER_TYPE_LABELS } from "@/lib/conferences/constants";
 import { normalizePaidContentVisibility } from "@/lib/conferences/visibility";
 import {
+  formatAdminDateOnly,
   formatProgrammeDayLabel,
   formatProgrammeTimeSlot,
   getSpeakersForDate,
@@ -16,14 +17,7 @@ import {
 } from "@/lib/conferences/utils";
 
 function formatDate(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-UG", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatAdminDateOnly(value);
 }
 
 function DetailBlock({ label, value, icon }) {
@@ -47,7 +41,6 @@ export function ConferenceAdminInfoTab({ conference }) {
   return (
     <div>
       <div className="grid gap-6 sm:grid-cols-2">
-        <DetailBlock label="Short description" value={conference.shortDescription} />
         <DetailBlock label="Category" value={conference.category} />
         <DetailBlock label="Main theme" value={conference.theme} />
         <DetailBlock label="Slug" value={conference.slug} />

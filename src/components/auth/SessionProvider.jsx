@@ -9,7 +9,9 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
+import { ForcedPasswordChangeDialog } from "@/components/auth/ForcedPasswordChangeDialog";
 import { RoleSwitchOverlay } from "@/components/auth/RoleSwitchOverlay";
+import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
 
 const SessionContext = createContext(null);
 
@@ -51,7 +53,11 @@ export function SessionProvider({ children, initialSession = null }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to switch role");
         setSession(data.session);
-        startTransition(() => router.refresh());
+        const target = getDefaultDashboardPath(role);
+        startTransition(() => {
+          router.push(target);
+          router.refresh();
+        });
       } finally {
         setSwitching(false);
         setSwitchTarget(null);
@@ -75,6 +81,7 @@ export function SessionProvider({ children, initialSession = null }) {
   return (
     <SessionContext.Provider value={value}>
       {children}
+      <ForcedPasswordChangeDialog />
       <RoleSwitchOverlay active={switching} targetRole={switchTarget} />
     </SessionContext.Provider>
   );

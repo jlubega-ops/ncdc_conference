@@ -4,6 +4,7 @@ import { requireConferenceManager } from "@/lib/auth/guards";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
+import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
 import { slugify } from "@/lib/conferences/utils";
 
 /**
@@ -22,7 +23,14 @@ function buildConferencePayload(input, userId) {
   const cfpCloseAt = input.cfpCloseAt ? new Date(input.cfpCloseAt) : null;
   const registrationOpenAt = input.registrationOpenAt ? new Date(input.registrationOpenAt) : null;
   const registrationCloseAt = input.registrationCloseAt ? new Date(input.registrationCloseAt) : null;
-  const conferenceDays = Array.isArray(input.conferenceDays) ? input.conferenceDays : [];
+  const conferenceDays = Array.isArray(input.conferenceDays)
+    ? input.conferenceDays.filter((day) => day?.date)
+    : [];
+  const cascaded = cascadeConferenceScheduleData({
+    conferenceDays,
+    programme: input.programme,
+    speakers: input.speakers,
+  });
   const lifecycleStatus = computeLifecycleStatus({
     cfpOpenAt,
     cfpCloseAt,
@@ -45,7 +53,10 @@ function buildConferencePayload(input, userId) {
   return {
     slug: slugify(input.slug?.trim() || title),
     title,
-    shortDescription: (input.shortDescription ?? "").trim() || null,
+    shortDescription:
+      (input.shortDescription ?? "").trim() ||
+      (input.description ?? "").trim().replace(/\s+/g, " ").slice(0, 200) ||
+      null,
     description: (input.description ?? "").trim() || null,
     theme: (input.theme ?? "").trim() || null,
     subThemes: Array.isArray(input.subThemes) ? input.subThemes.filter(Boolean) : [],
@@ -66,8 +77,8 @@ function buildConferencePayload(input, userId) {
     timezone: (input.timezone ?? "Africa/Nairobi").trim() || "Africa/Nairobi",
     cfpTopics: Array.isArray(input.cfpTopics) ? input.cfpTopics.filter(Boolean) : [],
     submissionGuidelines: (input.submissionGuidelines ?? "").trim() || null,
-    programme: Array.isArray(input.programme) ? input.programme : [],
-    speakers: Array.isArray(input.speakers) ? input.speakers : [],
+    programme: cascaded.programme,
+    speakers: cascaded.speakers,
     faqs: Array.isArray(input.faqs) ? input.faqs : [],
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,

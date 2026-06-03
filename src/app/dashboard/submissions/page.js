@@ -1,7 +1,21 @@
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { ConferenceAdminPicker } from "@/components/dashboard/ConferenceAdminPicker";
+import { requireConferenceManagerPage } from "@/lib/auth/guards";
+import { getAdminConferences } from "@/lib/conferences/service";
 
-export default function SubmissionsPage() {
+export const metadata = {
+  title: "Paper submissions | NCDC Dashboard",
+};
+
+export default async function PaperSubmissionsPage() {
+  const session = await requireConferenceManagerPage("/dashboard/submissions");
+  const conferences = await getAdminConferences(session);
+
   return (
-    <PlaceholderPage title="Submissions" description="Review all paper submissions." />
+    <ConferenceAdminPicker
+      title="Paper submissions"
+      description="Select a conference to view submitted papers and authors."
+      tab="submissions"
+      conferences={conferences}
+    />
   );
 }

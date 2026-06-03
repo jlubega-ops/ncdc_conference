@@ -5,15 +5,15 @@ import { Icon } from "@/components/ui/Icon";
 const actions = [
   {
     title: "Submit Paper",
-    description: "Sign in with your conference access key to submit or manage papers.",
+    description: "Sign in with your email and password to submit or manage papers.",
     icon: FileText,
-    href: "/login?tab=access",
+    href: "/login",
     cta: "Sign in",
     buttonVariant: "primary",
   },
   {
     title: "Register as Attendee",
-    description: "Register for a conference or sign in with your access key.",
+    description: "Register for a conference or sign in to track your applications.",
     icon: UserPlus,
     href: "/conferences",
     cta: "Register",

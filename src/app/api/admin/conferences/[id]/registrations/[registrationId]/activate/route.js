@@ -54,7 +54,10 @@ export async function POST(_request, { params }) {
 
   await prisma.conferenceRegistration.update({
     where: { id: registrationId },
-    data: { status: "CONFIRMED" },
+    data: {
+      status: "CONFIRMED",
+      paymentStatus: mapped.requiresPayment ? "verified" : null,
+    },
   });
 
   const hasAttendee = await prisma.userRole.findFirst({

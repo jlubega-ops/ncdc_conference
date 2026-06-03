@@ -9,9 +9,6 @@ export function validateConferenceForPublish(form) {
   const errors = {};
 
   if (!form.title?.trim()) errors.title = "Title is required.";
-  if (!form.shortDescription?.trim()) {
-    errors.shortDescription = "Short description is required.";
-  }
   if (!form.description?.trim()) errors.description = "Description is required.";
   if (!form.category?.trim()) errors.category = "Category is required.";
 

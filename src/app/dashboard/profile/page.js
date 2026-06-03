@@ -1,10 +1,14 @@
-import { PlaceholderPage } from "@/components/dashboard/PlaceholderPage";
+import { redirect } from "next/navigation";
+import { ProfilePage } from "@/components/dashboard/ProfilePage";
+import { getCurrentSession } from "@/lib/auth/session";
 
-export default function ProfilePage() {
-  return (
-    <PlaceholderPage
-      title="Profile"
-      description="Manage your account details and preferences."
-    />
-  );
+export const metadata = {
+  title: "Profile | NCDC Dashboard",
+};
+
+export default async function DashboardProfilePage() {
+  const session = await getCurrentSession();
+  if (!session) redirect("/login?redirect=/dashboard/profile");
+
+  return <ProfilePage />;
 }

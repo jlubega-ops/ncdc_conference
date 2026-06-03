@@ -12,6 +12,9 @@ export function ConferenceAdminFeedbackTab({ conferenceId }) {
       conferenceId={conferenceId}
       endpoint="feedback"
       emptyMessage="No evaluations or comments for this conference yet."
+      getSearchText={(row) =>
+        [row.user?.email, row.user?.name, row.comment, row.rating].filter(Boolean).join(" ")
+      }
       columns={[
         { key: "user", label: "User" },
         { key: "rating", label: "Rating" },
