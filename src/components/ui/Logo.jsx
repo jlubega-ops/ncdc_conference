@@ -22,7 +22,7 @@ export function Logo({ size = "md", showText = true, linkToHome = true, classNam
     <span className={cn("flex shrink-0 items-center gap-3", className)}>
       <Image
         src={brandAssets.logo}
-        alt="NCDC logo"
+        alt="Conference Management"
         width={img * 2}
         height={img}
         className="h-8 w-auto object-contain sm:h-10"
@@ -31,8 +31,9 @@ export function Logo({ size = "md", showText = true, linkToHome = true, classNam
       />
       {showText ? (
         <span className="hidden sm:block">
-          <span className={cn("block font-semibold text-foreground", text)}>NCDC</span>
-          <span className="block text-xs text-muted-foreground">Conference Platform</span>
+          <span className={cn("block font-semibold text-foreground", text)}>
+            Conference Management
+          </span>
         </span>
       ) : null}
     </span>

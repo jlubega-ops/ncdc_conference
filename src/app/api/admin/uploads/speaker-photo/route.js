@@ -4,6 +4,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { requireConferenceManager } from "@/lib/auth/guards";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -48,8 +50,18 @@ export async function POST(request) {
     const filePath = path.join(uploadDir, filename);
     await writeFile(filePath, compressed);
 
+    const url = `/uploads/speaker-photos/${filename}`;
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.UPLOAD_SPEAKER_PHOTO,
+      description: "Uploaded speaker photo",
+      resourceType: "upload",
+      metadata: { url },
+    });
+
     return NextResponse.json({
-      url: `/uploads/speaker-photos/${filename}`,
+      url,
       message: "Speaker photo uploaded successfully.",
     });
   } catch (error) {

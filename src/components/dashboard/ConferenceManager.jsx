@@ -16,6 +16,7 @@ import {
   Eye,
 } from "lucide-react";
 import { toast } from "react-toastify";
+import { useSession } from "@/components/auth/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Icon } from "@/components/ui/Icon";
@@ -28,11 +29,13 @@ import {
   PAID_VISIBILITY_OPTIONS,
   PAYMENT_DETAIL_FIELDS,
   PUBLICATION_LABELS,
+  REGISTRATION_MODES,
   SPEAKER_TYPES,
   SPEAKER_TYPE_LABELS,
   STATUS_LABELS,
 } from "@/lib/conferences/constants";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
+import { generateConferenceReference } from "@/lib/conferences/reference";
 import { validateConferenceForm } from "@/lib/conferences/validation";
 import { normalizePaidContentVisibility } from "@/lib/conferences/visibility";
 import {
@@ -51,6 +54,21 @@ import {
   normalizeSpeaker,
 } from "@/lib/conferences/utils";
 import { FieldLabel } from "@/components/ui/FieldLabel";
+import { cn } from "@/lib/cn";
+import {
+  DEFAULT_FEEDBACK_SETTINGS,
+  EVALUATE_SPEAKER_TYPES,
+  normalizeFeedbackSettings,
+} from "@/lib/feedback/questions";
+import { createId } from "@/lib/feedback/ids";
+import {
+  DEFAULT_GIFTS_SETTINGS,
+  GIFT_CATEGORIES,
+  applyGiftCategoryAvailability,
+  canEnableGiftCategory,
+  countSpeakersByGiftCategory,
+  normalizeGiftsSettings,
+} from "@/lib/gifts/settings";
 
 function emptyConference() {
   return {
@@ -58,6 +76,8 @@ function emptyConference() {
     slug: "",
     title: "",
     description: "",
+    organiserName: "",
+    organiserShortName: "",
     theme: "",
     subThemes: [],
     startDate: "",
@@ -69,6 +89,9 @@ function emptyConference() {
     publicationStatus: "DRAFT",
     featured: false,
     cardImage: "/assets/ncdc_image.jpg",
+    reference: generateConferenceReference({ year: new Date().getFullYear() }),
+    registrationMode: "MANUAL_APPROVE",
+    allowPaperSubmissions: false,
     cfpOpenAt: "",
     cfpCloseAt: "",
     registrationOpenAt: "",
@@ -79,6 +102,8 @@ function emptyConference() {
     programme: [],
     speakers: [],
     faqs: [],
+    feedbackSettings: normalizeFeedbackSettings(DEFAULT_FEEDBACK_SETTINGS),
+    giftsSettings: normalizeGiftsSettings(DEFAULT_GIFTS_SETTINGS),
     requiresPayment: false,
     paymentDetails: emptyPaymentDetails(),
     paidContentVisibility: { ...DEFAULT_PAID_VISIBILITY },
@@ -184,6 +209,11 @@ function normalizeForSubmit(form, publicationStatusOverride) {
       : null,
     onlineStream: normalizeOnlineStream(form.onlineStream),
     contacts: normalizeContacts(form.contacts),
+    feedbackSettings: normalizeFeedbackSettings(form.feedbackSettings),
+    giftsSettings: applyGiftCategoryAvailability(
+      normalizeGiftsSettings(form.giftsSettings),
+      cascaded.speakers,
+    ),
   };
 }
 
@@ -233,7 +263,15 @@ function mapFaqsForForm(faqs) {
 
 function fieldBelongsToSection(key, sectionId) {
   if (sectionId === "basics") {
-    return ["title", "slug", "description", "theme", "category"].includes(key);
+    return [
+      "title",
+      "slug",
+      "description",
+      "theme",
+      "category",
+      "organiserName",
+      "organiserShortName",
+    ].includes(key);
   }
   if (sectionId === "schedule") {
     return (
@@ -251,10 +289,23 @@ function fieldBelongsToSection(key, sectionId) {
       key.startsWith("onlineStream.")
     );
   }
+  if (sectionId === "registration") {
+    return key === "registrationMode" || key === "reference";
+  }
   if (sectionId === "media") return key === "cardImage";
-  if (sectionId === "cfp") return key === "cfpTopics" || key === "submissionGuidelines";
+  if (sectionId === "cfp") {
+    return (
+      key === "allowPaperSubmissions" ||
+      key === "cfpTopics" ||
+      key === "submissionGuidelines" ||
+      key === "cfpOpenAt" ||
+      key === "cfpCloseAt"
+    );
+  }
   if (sectionId === "programme") return key.startsWith("programme.");
   if (sectionId === "speakers") return key.startsWith("speakers.");
+  if (sectionId === "feedback") return key.startsWith("feedbackSettings");
+  if (sectionId === "gifts") return key.startsWith("giftsSettings");
   if (sectionId === "faqs") return key.startsWith("faqs.");
   if (sectionId === "payments") {
     return (
@@ -312,6 +363,9 @@ function SectionErrorAlert({ messages }) {
 export function ConferenceManager({ conferences }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { session } = useSession();
+  const canCreateConference = session?.activeRole === "SUPERADMIN";
+  const canDeleteConference = session?.activeRole === "SUPERADMIN";
   const openedEditFromQuery = useRef(false);
   const [list, setList] = useState(conferences);
   const [activeSection, setActiveSection] = useState(FORM_SECTIONS[0].id);
@@ -386,6 +440,8 @@ export function ConferenceManager({ conferences }) {
       programme: Array.isArray(conf.programme) ? conf.programme : [],
       speakers: mapSpeakersForForm(conf.speakers),
       faqs: mapFaqsForForm(conf.faqs),
+      feedbackSettings: normalizeFeedbackSettings(conf.feedbackSettings),
+      giftsSettings: normalizeGiftsSettings(conf.giftsSettings),
       ...mapConferenceFormExtras(conf),
     });
     setProgrammeDrafts({});
@@ -402,6 +458,10 @@ export function ConferenceManager({ conferences }) {
   }, [searchParams, list, router]);
 
   function beginCreate() {
+    if (!canCreateConference) {
+      toast.error("Only system administrators can create conferences.");
+      return;
+    }
     const base = emptyConference();
     try {
       const raw = localStorage.getItem(getDraftStorageKey(null));
@@ -452,6 +512,8 @@ export function ConferenceManager({ conferences }) {
       programme: Array.isArray(conf.programme) ? conf.programme : [],
       speakers: mapSpeakersForForm(conf.speakers),
       faqs: mapFaqsForForm(conf.faqs),
+      feedbackSettings: normalizeFeedbackSettings(conf.feedbackSettings),
+      giftsSettings: normalizeGiftsSettings(conf.giftsSettings),
       ...mapConferenceFormExtras(conf),
     };
 
@@ -736,6 +798,13 @@ export function ConferenceManager({ conferences }) {
       : [...current, entry];
 
     onField("speakers", nextSpeakers);
+    onField(
+      "giftsSettings",
+      applyGiftCategoryAvailability(
+        normalizeGiftsSettings(editing.giftsSettings),
+        nextSpeakers,
+      ),
+    );
     setSpeakerDraft(emptySpeakerDraft());
     setEditingSpeakerId(null);
     setFieldErrors((prev) => {
@@ -781,10 +850,15 @@ export function ConferenceManager({ conferences }) {
 
   function removeSpeakerById(id) {
     if (editingSpeakerId === id) cancelEditSpeaker();
+    const nextSpeakers = (Array.isArray(editing.speakers) ? editing.speakers : []).filter(
+      (speaker) => speaker.id !== id,
+    );
+    onField("speakers", nextSpeakers);
     onField(
-      "speakers",
-      (Array.isArray(editing.speakers) ? editing.speakers : []).filter(
-        (speaker) => speaker.id !== id,
+      "giftsSettings",
+      applyGiftCategoryAvailability(
+        normalizeGiftsSettings(editing.giftsSettings),
+        nextSpeakers,
       ),
     );
   }
@@ -1115,6 +1189,10 @@ export function ConferenceManager({ conferences }) {
   }
 
   function requestDelete(conf) {
+    if (!canDeleteConference) {
+      toast.error("Only system administrators can delete conferences.");
+      return;
+    }
     setDeleteTarget(conf);
     setDeleteConfirmText("");
   }
@@ -1151,13 +1229,16 @@ export function ConferenceManager({ conferences }) {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Manage Conferences</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create, edit, save drafts, and publish conferences. Only published
-              conferences appear on public pages.
+              {canCreateConference
+                ? "Create, edit, save drafts, and publish conferences. Only published conferences appear on public pages."
+                : "Edit and publish conferences assigned to you. Only published conferences appear on public pages."}
             </p>
           </div>
-          <Button variant="primary" icon={Plus} onClick={beginCreate}>
-            New Conference
-          </Button>
+          {canCreateConference ? (
+            <Button variant="primary" icon={Plus} onClick={beginCreate}>
+              New Conference
+            </Button>
+          ) : null}
         </div>
       </section>
 
@@ -1243,15 +1324,17 @@ export function ConferenceManager({ conferences }) {
                     >
                       Edit
                     </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      icon={Trash2}
-                      disabled={loading}
-                      onClick={() => requestDelete(conf)}
-                    >
-                      Delete
-                    </Button>
+                    {canDeleteConference ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        icon={Trash2}
+                        disabled={loading}
+                        onClick={() => requestDelete(conf)}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -1332,6 +1415,29 @@ export function ConferenceManager({ conferences }) {
                       value={editing.slug}
                       onChange={(e) => onField("slug", e.target.value)}
                       hint="Optional. Auto-generated from title if blank."
+                    />
+                    <Input
+                      label="Organisation / organiser name"
+                      value={editing.organiserName || ""}
+                      onChange={(e) => onField("organiserName", e.target.value)}
+                      error={fieldErrors.organiserName}
+                      hint="Shown on the conference page and certificates."
+                      requiredMark
+                    />
+                    <Input
+                      label="Organisation short name"
+                      value={editing.organiserShortName || ""}
+                      onChange={(e) => {
+                        const cleaned = e.target.value
+                          .toUpperCase()
+                          .replace(/[^A-Z0-9]/g, "")
+                          .slice(0, 12);
+                        onField("organiserShortName", cleaned);
+                      }}
+                      error={fieldErrors.organiserShortName}
+                      hint="Used in access codes, e.g. NCDC/CONF2027/…. Letters and numbers only."
+                      className="font-mono uppercase"
+                      requiredMark
                     />
                     <div className="sm:col-span-2">
                       <FieldLabel required>Description</FieldLabel>
@@ -1472,7 +1578,11 @@ export function ConferenceManager({ conferences }) {
                         value={editing.registrationOpenAt}
                         error={fieldErrors.registrationOpenAt}
                         onChange={(e) => onField("registrationOpenAt", e.target.value)}
-                        requiredMark
+                        requiredMark={
+                          !["OPEN_NO_REGISTRATION", "ADMIN_UPLOAD"].includes(
+                            editing.registrationMode,
+                          )
+                        }
                       />
                       <Input
                         label="Registration closes on"
@@ -1480,7 +1590,11 @@ export function ConferenceManager({ conferences }) {
                         value={editing.registrationCloseAt}
                         error={fieldErrors.registrationCloseAt}
                         onChange={(e) => onField("registrationCloseAt", e.target.value)}
-                        requiredMark
+                        requiredMark={
+                          !["OPEN_NO_REGISTRATION", "ADMIN_UPLOAD"].includes(
+                            editing.registrationMode,
+                          )
+                        }
                       />
                     </div>
 
@@ -1610,6 +1724,117 @@ export function ConferenceManager({ conferences }) {
                   </div>
                 ) : null}
 
+                {activeSection === "registration" ? (
+                  <div className="space-y-6">
+                    <SectionErrorAlert
+                      messages={getSectionErrorMessages(fieldErrors, "registration")}
+                    />
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">
+                        How attendees join
+                      </h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Choose how people register for this conference. Approved attendees receive
+                        an access code by email (no password). Only one login session can be active
+                        at a time.
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        {REGISTRATION_MODES.map((mode) => {
+                          const selected = editing.registrationMode === mode.value;
+                          return (
+                            <label
+                              key={mode.value}
+                              className={cn(
+                                "flex cursor-pointer gap-3 rounded-md border p-3 transition-colors",
+                                selected
+                                  ? "border-primary bg-primary-light/40"
+                                  : "border-border bg-background hover:border-primary/40",
+                              )}
+                            >
+                              <input
+                                type="radio"
+                                name="registrationMode"
+                                className="mt-1"
+                                checked={selected}
+                                onChange={() => onField("registrationMode", mode.value)}
+                              />
+                              <span>
+                                <span className="block text-sm font-medium text-foreground">
+                                  {mode.label}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  {mode.description}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {fieldErrors.registrationMode ? (
+                        <p className="mt-2 text-xs text-error">{fieldErrors.registrationMode}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <h4 className="text-sm font-semibold text-foreground">
+                        Conference reference
+                      </h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Public code used to find this conference (for example on the access page).
+                        Generated automatically; you can regenerate before publishing.
+                      </p>
+                      <div className="mt-4 flex flex-wrap items-end gap-3">
+                        <div className="min-w-[200px] flex-1">
+                          <Input
+                            label="Reference number"
+                            value={editing.reference || ""}
+                            readOnly
+                            error={fieldErrors.reference}
+                            hint="Saved with the conference. Format: ORG-XXXXX-YEAR"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            const year =
+                              editing.startDate
+                                ? new Date(editing.startDate).getFullYear()
+                                : editing.conferenceDays?.[0]?.date
+                                  ? new Date(
+                                      `${editing.conferenceDays[0].date}T00:00:00`,
+                                    ).getFullYear()
+                                  : new Date().getFullYear();
+                            onField(
+                              "reference",
+                              generateConferenceReference({
+                                year,
+                                organiserShortName: editing.organiserShortName,
+                              }),
+                            );
+                          }}
+                        >
+                          Regenerate
+                        </Button>
+                      </div>
+                    </div>
+
+                    {editing.registrationMode === "ADMIN_UPLOAD" ? (
+                      <p className="rounded-md border border-border bg-neutral-50 px-3 py-2 text-xs text-muted-foreground">
+                        Invite-only: this conference will not appear on the public conferences page
+                        or home search. After saving, upload attendees under Registrations
+                        (template: email, firstName, middleName, lastName, gender, telephone,
+                        countryOfOrigin, institution). Each person receives an access code.
+                      </p>
+                    ) : null}
+                    {editing.registrationMode === "OPEN_NO_REGISTRATION" ? (
+                      <p className="rounded-md border border-border bg-neutral-50 px-3 py-2 text-xs text-muted-foreground">
+                        The public Register button will be hidden for this conference.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {activeSection === "media" ? (
                   <div className="space-y-4">
                     <SectionErrorAlert messages={getSectionErrorMessages(fieldErrors, "media")} />
@@ -1654,70 +1879,116 @@ export function ConferenceManager({ conferences }) {
                 {activeSection === "cfp" ? (
                   <div className="space-y-4">
                     <SectionErrorAlert messages={getSectionErrorMessages(fieldErrors, "cfp")} />
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-foreground">
-                        CFP topics
-                      </label>
-                      <p className="mb-2 text-xs text-muted-foreground">
-                        Add topics one by one so submitters can select them clearly later.
-                      </p>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground"
-                          value={newTopic}
-                          onChange={(e) => setNewTopic(e.target.value)}
-                          placeholder="e.g. Curriculum Assessment"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              addTopic();
-                            }
-                          }}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          icon={Plus}
-                          onClick={addTopic}
-                          className="shrink-0 sm:w-auto"
-                        >
-                          Add topic
-                        </Button>
-                      </div>
-                      {editing.cfpTopics?.length ? (
-                        <ul className="mt-3 space-y-2">
-                          {editing.cfpTopics.map((topic, index) => (
-                            <li
-                              key={`${topic}-${index}`}
-                              className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-sm"
-                            >
-                              <span className="min-w-0 flex-1 text-foreground">{topic}</span>
-                              <button
-                                type="button"
-                                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-neutral-100 hover:text-error"
-                                aria-label={`Remove topic ${topic}`}
-                                onClick={() => removeTopic(index)}
-                              >
-                                <Icon icon={X} size="sm" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 text-xs text-muted-foreground">No topics added yet.</p>
+                    <label
+                      className={cn(
+                        "flex cursor-pointer gap-3 rounded-md border p-3 transition-colors",
+                        editing.allowPaperSubmissions
+                          ? "border-primary bg-primary-light/40"
+                          : "border-border bg-background",
                       )}
-                    </div>
-                    <label className="mb-1.5 block text-sm font-medium text-foreground">
-                      Submission guidelines
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={Boolean(editing.allowPaperSubmissions)}
+                        onChange={(e) => onField("allowPaperSubmissions", e.target.checked)}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-foreground">
+                          Allow paper submissions
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Default is off. When enabled, attendees can submit papers during the CFP
+                          window and the Call for Papers tab appears on the conference page.
+                        </span>
+                      </span>
                     </label>
-                    <RichTextEditor
-                      value={editing.submissionGuidelines}
-                      onChange={(value) => onField("submissionGuidelines", value)}
-                    />
-                    <p className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                      CFP and registration opening/closing dates are managed in
-                      <span className="font-medium text-foreground"> Schedule & venue</span>.
-                    </p>
+
+                    {editing.allowPaperSubmissions ? (
+                      <>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Input
+                            label="Call for Papers opens on"
+                            type="date"
+                            value={editing.cfpOpenAt}
+                            error={fieldErrors.cfpOpenAt}
+                            onChange={(e) => onField("cfpOpenAt", e.target.value)}
+                          />
+                          <Input
+                            label="Call for Papers closes on"
+                            type="date"
+                            value={editing.cfpCloseAt}
+                            error={fieldErrors.cfpCloseAt}
+                            onChange={(e) => onField("cfpCloseAt", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-foreground">
+                            CFP topics
+                          </label>
+                          <p className="mb-2 text-xs text-muted-foreground">
+                            Add topics one by one so submitters can select them clearly later.
+                          </p>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                              className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground"
+                              value={newTopic}
+                              onChange={(e) => setNewTopic(e.target.value)}
+                              placeholder="e.g. Curriculum Assessment"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  addTopic();
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              icon={Plus}
+                              onClick={addTopic}
+                              className="shrink-0 sm:w-auto"
+                            >
+                              Add topic
+                            </Button>
+                          </div>
+                          {editing.cfpTopics?.length ? (
+                            <ul className="mt-3 space-y-2">
+                              {editing.cfpTopics.map((topic, index) => (
+                                <li
+                                  key={`${topic}-${index}`}
+                                  className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-sm"
+                                >
+                                  <span className="min-w-0 flex-1 text-foreground">{topic}</span>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-neutral-100 hover:text-error"
+                                    aria-label={`Remove topic ${topic}`}
+                                    onClick={() => removeTopic(index)}
+                                  >
+                                    <Icon icon={X} size="sm" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">No topics added yet.</p>
+                          )}
+                        </div>
+                        <label className="mb-1.5 block text-sm font-medium text-foreground">
+                          Submission guidelines
+                        </label>
+                        <RichTextEditor
+                          value={editing.submissionGuidelines}
+                          onChange={(value) => onField("submissionGuidelines", value)}
+                        />
+                      </>
+                    ) : (
+                      <p className="rounded-md border border-border bg-neutral-50 px-3 py-2 text-xs text-muted-foreground">
+                        Paper submission is disabled. The Call for Papers tab will not appear for
+                        attendees.
+                      </p>
+                    )}
                   </div>
                 ) : null}
 
@@ -2149,6 +2420,379 @@ export function ConferenceManager({ conferences }) {
                         </div>
                       );
                     })()}
+                  </div>
+                ) : null}
+
+                {activeSection === "feedback" ? (
+                  <div className="space-y-6">
+                    <SectionErrorAlert
+                      messages={getSectionErrorMessages(fieldErrors, "feedback")}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Configure day questions (1–5 agree scale) and whether attendees rate
+                      speakers, MCs, and other roles from the Speakers tab.
+                    </p>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <h4 className="text-sm font-semibold text-foreground">Day questions</h4>
+                      <div className="mt-3 space-y-3">
+                        {(editing.feedbackSettings?.questions ?? []).map((q, index) => (
+                          <div key={q.id} className="flex items-start gap-2">
+                            <Input
+                              label={index === 0 ? "Question" : undefined}
+                              value={q.label}
+                              onChange={(e) => {
+                                const next = [...(editing.feedbackSettings.questions ?? [])];
+                                next[index] = { ...next[index], label: e.target.value };
+                                onField("feedbackSettings", {
+                                  ...editing.feedbackSettings,
+                                  questions: next,
+                                });
+                              }}
+                              className="flex-1"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Trash2}
+                              className={index === 0 ? "mt-7" : "mt-1"}
+                              onClick={() => {
+                                onField("feedbackSettings", {
+                                  ...editing.feedbackSettings,
+                                  questions: (editing.feedbackSettings.questions ?? []).filter(
+                                    (_, i) => i !== index,
+                                  ),
+                                });
+                              }}
+                              aria-label="Remove question"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        icon={Plus}
+                        onClick={() =>
+                          onField("feedbackSettings", {
+                            ...editing.feedbackSettings,
+                            questions: [
+                              ...(editing.feedbackSettings.questions ?? []),
+                              { id: createId("q"), label: "", type: "likert" },
+                            ],
+                          })
+                        }
+                      >
+                        Add question
+                      </Button>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-border text-primary"
+                          checked={editing.feedbackSettings?.evaluateSpeakers !== false}
+                          onChange={(e) =>
+                            onField("feedbackSettings", {
+                              ...editing.feedbackSettings,
+                              evaluateSpeakers: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Evaluate speakers / MCs
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            When enabled, attendees rate people listed on the Speakers tab for
+                            each day they appear.
+                          </span>
+                        </span>
+                      </label>
+
+                      {editing.feedbackSettings?.evaluateSpeakers !== false ? (
+                        <>
+                          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                            {EVALUATE_SPEAKER_TYPES.map((role) => (
+                              <label
+                                key={role.value}
+                                className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-border text-primary"
+                                  checked={
+                                    editing.feedbackSettings?.evaluateTypes?.[role.value] !==
+                                    false
+                                  }
+                                  onChange={(e) =>
+                                    onField("feedbackSettings", {
+                                      ...editing.feedbackSettings,
+                                      evaluateTypes: {
+                                        ...editing.feedbackSettings.evaluateTypes,
+                                        [role.value]: e.target.checked,
+                                      },
+                                    })
+                                  }
+                                />
+                                {role.label}
+                              </label>
+                            ))}
+                          </div>
+
+                          <h4 className="mt-5 text-sm font-semibold text-foreground">
+                            Speaker questions
+                          </h4>
+                          <div className="mt-3 space-y-3">
+                            {(editing.feedbackSettings?.speakerQuestions ?? []).map(
+                              (q, index) => (
+                                <div key={q.id} className="flex items-start gap-2">
+                                  <Input
+                                    label={index === 0 ? "Question" : undefined}
+                                    value={q.label}
+                                    onChange={(e) => {
+                                      const next = [
+                                        ...(editing.feedbackSettings.speakerQuestions ?? []),
+                                      ];
+                                      next[index] = { ...next[index], label: e.target.value };
+                                      onField("feedbackSettings", {
+                                        ...editing.feedbackSettings,
+                                        speakerQuestions: next,
+                                      });
+                                    }}
+                                    className="flex-1"
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    icon={Trash2}
+                                    className={index === 0 ? "mt-7" : "mt-1"}
+                                    onClick={() => {
+                                      onField("feedbackSettings", {
+                                        ...editing.feedbackSettings,
+                                        speakerQuestions: (
+                                          editing.feedbackSettings.speakerQuestions ?? []
+                                        ).filter((_, i) => i !== index),
+                                      });
+                                    }}
+                                    aria-label="Remove speaker question"
+                                  />
+                                </div>
+                              ),
+                            )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            icon={Plus}
+                            onClick={() =>
+                              onField("feedbackSettings", {
+                                ...editing.feedbackSettings,
+                                speakerQuestions: [
+                                  ...(editing.feedbackSettings.speakerQuestions ?? []),
+                                  { id: createId("sq"), label: "", type: "likert" },
+                                ],
+                              })
+                            }
+                          >
+                            Add speaker question
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeSection === "gifts" ? (
+                  <div className="space-y-6">
+                    <SectionErrorAlert messages={getSectionErrorMessages(fieldErrors, "gifts")} />
+                    <p className="text-sm text-foreground/80">
+                      Configure awards and gifts for this conference. Default is not applicable.
+                    </p>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-border text-primary"
+                          checked={Boolean(editing.giftsSettings?.applicable)}
+                          onChange={(e) =>
+                            onField("giftsSettings", {
+                              ...normalizeGiftsSettings(editing.giftsSettings),
+                              applicable: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Awards & gifts applicable
+                          </span>
+                          <span className="text-sm text-foreground/80">
+                            When enabled, add items and choose which categories receive them.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {editing.giftsSettings?.applicable ? (
+                      <>
+                        <div className="rounded-lg border border-border bg-background p-4">
+                          <h4 className="text-sm font-semibold text-foreground">Items</h4>
+                          <p className="mt-1 text-sm text-foreground/80">
+                            Quantity is per participant (used for issuance reports).
+                          </p>
+                          <div className="mt-3 space-y-3">
+                            {(editing.giftsSettings?.items ?? []).map((item, index) => (
+                              <div
+                                key={item.id}
+                                className="flex flex-wrap items-end gap-2"
+                              >
+                                <div className="min-w-[180px] flex-1">
+                                  <Input
+                                    label={index === 0 ? "Item" : undefined}
+                                    value={item.name}
+                                    placeholder="e.g. Bag"
+                                    onChange={(e) => {
+                                      const next = [...(editing.giftsSettings.items ?? [])];
+                                      next[index] = { ...next[index], name: e.target.value };
+                                      onField("giftsSettings", {
+                                        ...editing.giftsSettings,
+                                        items: next,
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="w-28">
+                                  <Input
+                                    label={index === 0 ? "Qty" : undefined}
+                                    type="number"
+                                    min={1}
+                                    value={item.quantity}
+                                    onChange={(e) => {
+                                      const next = [...(editing.giftsSettings.items ?? [])];
+                                      next[index] = {
+                                        ...next[index],
+                                        quantity: Math.max(
+                                          1,
+                                          Number.parseInt(e.target.value, 10) || 1,
+                                        ),
+                                      };
+                                      onField("giftsSettings", {
+                                        ...editing.giftsSettings,
+                                        items: next,
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  icon={Trash2}
+                                  className={index === 0 ? "mb-0.5" : ""}
+                                  onClick={() =>
+                                    onField("giftsSettings", {
+                                      ...editing.giftsSettings,
+                                      items: (editing.giftsSettings.items ?? []).filter(
+                                        (_, i) => i !== index,
+                                      ),
+                                    })
+                                  }
+                                  aria-label="Remove item"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            icon={Plus}
+                            onClick={() =>
+                              onField("giftsSettings", {
+                                ...editing.giftsSettings,
+                                items: [
+                                  ...(editing.giftsSettings.items ?? []),
+                                  { id: createId("gift"), name: "", quantity: 1 },
+                                ],
+                              })
+                            }
+                          >
+                            Add item
+                          </Button>
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-background p-4">
+                          <h4 className="text-sm font-semibold text-foreground">
+                            Categories that receive gifts
+                          </h4>
+                          <p className="mt-1 text-sm text-foreground/80">
+                            Speaker categories are available only after you add at least one
+                            speaker of that type (Speakers section). Participants stay available
+                            for registered attendees.
+                          </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {GIFT_CATEGORIES.map((cat) => {
+                              const speakerCounts = countSpeakersByGiftCategory(
+                                editing.speakers,
+                              );
+                              const enabled = canEnableGiftCategory(
+                                cat.value,
+                                editing.speakers,
+                              );
+                              const count =
+                                cat.value === "participants"
+                                  ? null
+                                  : speakerCounts[cat.value] ?? 0;
+                              return (
+                                <label
+                                  key={cat.value}
+                                  className={cn(
+                                    "flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm",
+                                    enabled
+                                      ? "text-foreground"
+                                      : "cursor-not-allowed bg-neutral-50 text-foreground/50",
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-border text-primary disabled:opacity-50"
+                                    disabled={!enabled}
+                                    checked={
+                                      enabled &&
+                                      editing.giftsSettings?.categories?.[cat.value] === true
+                                    }
+                                    onChange={(e) =>
+                                      onField("giftsSettings", {
+                                        ...normalizeGiftsSettings(editing.giftsSettings),
+                                        categories: {
+                                          ...normalizeGiftsSettings(editing.giftsSettings)
+                                            .categories,
+                                          [cat.value]: e.target.checked,
+                                        },
+                                      })
+                                    }
+                                  />
+                                  <span className="flex-1">
+                                    {cat.label}
+                                    {count != null ? (
+                                      <span className="ml-1 text-xs opacity-80">
+                                        ({count} added)
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  {!enabled ? (
+                                    <span className="text-xs">Add speakers first</span>
+                                  ) : null}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
 

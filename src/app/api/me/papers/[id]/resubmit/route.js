@@ -3,6 +3,8 @@ import { requireSession } from "@/lib/auth/session";
 import { resubmitPaper } from "@/lib/papers/service";
 import { mapPaperForAuthor } from "@/lib/papers/map";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -33,6 +35,16 @@ export async function POST(request, { params }) {
       include: {
         conference: { select: { id: true, slug: true, title: true } },
       },
+    });
+
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PAPER_RESUBMIT,
+      description: `Resubmitted paper "${title || withConference?.title || id}"`,
+      resourceType: "paper",
+      resourceId: row.id,
+      conferenceId: withConference?.conference?.id ?? null,
     });
 
     return NextResponse.json({

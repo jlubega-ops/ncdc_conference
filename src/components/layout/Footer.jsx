@@ -14,7 +14,7 @@ export function Footer() {
       <footer className="border-t border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs sm:px-6">
           <p className="text-muted-foreground">
-            &copy; {new Date().getFullYear()} NCDC Uganda
+            &copy; {new Date().getFullYear()} Conference Management
           </p>
           <div className="flex items-center gap-3">
             {footerLinks.legal.slice(0, 3).map((link) => (
@@ -38,15 +38,10 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-2">
             <Logo size="lg" linkToHome={false} />
-            <p className="mt-3 font-semibold text-foreground">
-              NCDC Conference Management Platform
-            </p>
-            <p className="text-sm text-muted-foreground">
-              National Curriculum Development Centre, Uganda
-            </p>
+            <p className="mt-3 font-semibold text-foreground">Conference Management</p>
             <p className="mt-4 max-w-md text-sm text-muted-foreground">
-              Discover conferences, submit research papers, register for events,
-              and access conference materials from one centralized platform.
+              Discover conferences, register for events, submit papers, and access materials from
+              one place.
             </p>
           </div>
 
@@ -84,8 +79,7 @@ export function Footer() {
         </div>
 
         <div className="mt-10 border-t border-border pt-6 text-center text-sm text-muted-foreground">
-          &copy; {new Date().getFullYear()} National Curriculum Development Centre,
-          Uganda. All rights reserved.
+          &copy; {new Date().getFullYear()} Conference Management. All rights reserved.
         </div>
       </div>
     </footer>

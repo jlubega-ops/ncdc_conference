@@ -55,7 +55,7 @@ export function LoginForm() {
         required
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="you@institution.ac.ug"
+        placeholder="you@example.com"
       />
       <Input
         label="Password"
@@ -80,8 +80,7 @@ export function LoginForm() {
         {loading ? "Signing in…" : "Sign in"}
       </Button>
       <p className="text-xs text-muted-foreground">
-        New attendees receive a temporary password by email after registering. You must change it
-        on first sign-in.
+        Staff accounts only. Attendees sign in with an access code (Attendee access tab).
       </p>
     </form>
   );

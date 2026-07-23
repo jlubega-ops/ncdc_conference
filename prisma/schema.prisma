@@ -35,6 +35,13 @@ enum RegistrationStatus {
   CANCELLED
 }
 
+enum ConferenceRegistrationMode {
+  AUTO_APPROVE
+  MANUAL_APPROVE
+  OPEN_NO_REGISTRATION
+  ADMIN_UPLOAD
+}
+
 enum PaperSubmissionStatus {
   DRAFT
   SUBMITTED
@@ -74,6 +81,7 @@ model User {
   papersAssignedReview   PaperSubmission[]      @relation("PaperAssignedReviewer")
   conferenceFeedback     ConferenceFeedback[]
   certificates           ConferenceCertificate[]
+  giftIssuances          ConferenceGiftIssuance[]
 
   @@map("users")
 }
@@ -94,14 +102,15 @@ model UserRole {
 }
 
 model Session {
-  id         String   @id @default(cuid())
-  userId     String
-  tokenHash  String   @unique
-  activeRole Role
-  userAgent  String?  @db.Text
-  ipAddress  String?  @db.VarChar(45)
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id                  String   @id @default(cuid())
+  userId              String
+  tokenHash           String   @unique
+  activeRole          Role
+  activeConferenceId  String?
+  userAgent           String?  @db.Text
+  ipAddress           String?  @db.VarChar(45)
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -113,9 +122,13 @@ model Session {
 model Conference {
   id                   String                    @id @default(cuid())
   slug                 String                    @unique
+  reference            String?                   @unique @db.VarChar(48)
+  registrationMode     ConferenceRegistrationMode @default(MANUAL_APPROVE)
   title                String
   shortDescription     String?                   @db.Text
   description          String?                   @db.Text
+  organiserName        String?                   @db.VarChar(200)
+  organiserShortName   String?                   @db.VarChar(16)
   theme                String?                   @db.Text
   subThemes            Json?
   startDate            DateTime?
@@ -127,6 +140,7 @@ model Conference {
   publicationStatus    PublicationStatus         @default(DRAFT)
   featured             Boolean                   @default(false)
   cardImage            String?
+  allowPaperSubmissions Boolean                  @default(false)
   cfpOpenAt            DateTime?
   cfpCloseAt           DateTime?
   registrationOpenAt   DateTime?
@@ -138,6 +152,10 @@ model Conference {
   programme            Json?
   speakers             Json?
   faqs                 Json?
+  /// Day questions + which speaker roles to evaluate
+  feedbackSettings     Json?
+  /// Awards & gifts: applicable flag, items, recipient categories
+  giftsSettings        Json?
   requiresPayment      Boolean                   @default(false)
   paymentDetails       Json?
   paidContentVisibility Json?
@@ -158,6 +176,7 @@ model Conference {
   resources      ConferenceResource[]
   presentations  ConferencePresentation[]
   certificates   ConferenceCertificate[]
+  giftIssuances  ConferenceGiftIssuance[]
 
   @@index([publicationStatus])
   @@index([featured])
@@ -281,16 +300,49 @@ model ConferenceFeedback {
   id           String   @id @default(cuid())
   conferenceId String
   userId       String
+  /// DAY | SPEAKER
+  feedbackType String   @default("DAY") @db.VarChar(16)
+  /// dayDate (YYYY-MM-DD) or dayDate:speakerId
+  targetKey    String   @default("overall") @db.VarChar(64)
+  /// Compact answers: likert ratings / short comment
+  answers      Json?
   rating       Int?
-  comment      String   @db.Text
+  comment      String?  @db.Text
+  /// When true, admin views hide submitter identity
+  isAnonymous  Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([conferenceId, userId, feedbackType, targetKey])
   @@index([conferenceId])
+  @@index([userId])
   @@map("conference_feedback")
+}
+
+model ConferenceGiftIssuance {
+  id           String   @id @default(cuid())
+  conferenceId String
+  /// user:<userId> or speaker:<speakerId>
+  recipientKey String   @db.VarChar(80)
+  /// participants | normal | keynote | guest | host | mc
+  category     String   @db.VarChar(32)
+  /// { [itemId]: quantityIssued }
+  items        Json
+  issuedAt     DateTime @default(now())
+  issuedById   String?
+  updatedAt    DateTime @updatedAt
+
+  conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId     String?
+
+  @@unique([conferenceId, recipientKey, category])
+  @@index([conferenceId])
+  @@index([userId])
+  @@map("conference_gift_issuances")
 }
 
 model ConferenceResource {
@@ -329,4 +381,33 @@ model ConferencePresentation {
 
   @@index([conferenceId])
   @@map("conference_presentations")
+}
+
+/// System-wide audit trail (visible to SUPERADMIN only)
+model ActivityLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  actorEmail   String?  @db.VarChar(255)
+  actorName    String?  @db.VarChar(255)
+  actorRole    String?  @db.VarChar(32)
+  /// Machine key e.g. conference.create, registration.approve
+  action       String   @db.VarChar(80)
+  /// Human-readable summary
+  description  String   @db.Text
+  resourceType String?  @db.VarChar(64)
+  resourceId   String?  @db.VarChar(80)
+  conferenceId String?
+  /// Optional structured details — never store secrets (passwords, access keys)
+  metadata     Json?
+  success      Boolean  @default(true)
+  ipAddress    String?  @db.VarChar(45)
+  userAgent    String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([actorId])
+  @@index([conferenceId])
+  @@index([resourceType, resourceId])
+  @@map("activity_logs")
 }

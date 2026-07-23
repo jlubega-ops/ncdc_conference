@@ -3,6 +3,9 @@ import {
   CATEGORIES,
   STATUS_LABELS,
 } from "@/lib/conferences/constants";
+import {
+  normalizeConferenceReferenceInput,
+} from "@/lib/conferences/reference";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { normalizePaidContentVisibility } from "@/lib/conferences/visibility";
 import {
@@ -13,8 +16,28 @@ import {
   normalizePaymentDetails,
   normalizeSpeaker,
 } from "@/lib/conferences/utils";
+import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
+import { normalizeGiftsSettings, applyGiftCategoryAvailability } from "@/lib/gifts/settings";
 
 const DEFAULT_IMAGE = "/assets/ncdc_image.jpg";
+
+/**
+ * Published and not completed — available for public discovery.
+ * @param {ReturnType<typeof mapConferenceForUi>} conference
+ */
+export function isOpenPublicConference(conference) {
+  if (conference.publicationStatus !== "PUBLISHED") return false;
+  if (conference.registrationMode === "ADMIN_UPLOAD") return false;
+  return conference.status !== "completed";
+}
+
+/**
+ * Invite-only conferences (admin uploads list) are hidden from public browse/search.
+ * @param {ReturnType<typeof mapConferenceForUi> | { registrationMode?: string }} conference
+ */
+export function isInviteOnlyConference(conference) {
+  return (conference.registrationMode || "MANUAL_APPROVE") === "ADMIN_UPLOAD";
+}
 
 /**
  * @param {string} value
@@ -65,6 +88,8 @@ export function mapConferenceForUi(conference) {
   return {
     id: conference.id,
     slug: conference.slug,
+    reference: conference.reference || String(conference.slug || "").toUpperCase(),
+    registrationMode: conference.registrationMode || "MANUAL_APPROVE",
     title: conference.title,
     shortDescription:
       conference.shortDescription?.trim() ||
@@ -72,6 +97,8 @@ export function mapConferenceForUi(conference) {
         ? String(conference.description).replace(/\s+/g, " ").trim().slice(0, 200)
         : ""),
     description: conference.description ?? "",
+    organiserName: conference.organiserName ?? "",
+    organiserShortName: conference.organiserShortName ?? "",
     theme: conference.theme ?? "",
     subThemes,
     dateRange: formatDateRange(startDate, endDate),
@@ -84,6 +111,7 @@ export function mapConferenceForUi(conference) {
     status: normalizeStatus(computedStatus || conference.lifecycleStatus),
     featured: Boolean(conference.featured),
     cardImage: conference.cardImage || DEFAULT_IMAGE,
+    allowPaperSubmissions: Boolean(conference.allowPaperSubmissions),
     cfpOpenAt: conference.cfpOpenAt,
     cfpCloseAt: conference.cfpCloseAt,
     registrationOpenAt: conference.registrationOpenAt,
@@ -95,6 +123,11 @@ export function mapConferenceForUi(conference) {
     programme,
     speakers,
     faqs,
+    feedbackSettings: normalizeFeedbackSettings(conference.feedbackSettings),
+    giftsSettings: applyGiftCategoryAvailability(
+      normalizeGiftsSettings(conference.giftsSettings),
+      speakers,
+    ),
     requiresPayment: Boolean(conference.requiresPayment),
     paymentDetails: normalizePaymentDetails(conference.paymentDetails),
     paidContentVisibility: normalizePaidContentVisibility(conference.paidContentVisibility),
@@ -110,7 +143,10 @@ export function mapConferenceForUi(conference) {
 export async function getPublishedConferences() {
   try {
     const rows = await prisma.conference.findMany({
-      where: { publicationStatus: "PUBLISHED" },
+      where: {
+        publicationStatus: "PUBLISHED",
+        NOT: { registrationMode: "ADMIN_UPLOAD" },
+      },
       orderBy: [{ startDate: "asc" }, { title: "asc" }],
     });
     return rows.map(mapConferenceForUi);
@@ -128,6 +164,78 @@ export async function getPublishedConferenceBySlug(slug) {
     where: { slug, publicationStatus: "PUBLISHED" },
   });
   return row ? mapConferenceForUi(row) : null;
+}
+
+/**
+ * Search open (published, not completed) conferences by title or reference.
+ * @param {string} query
+ * @param {{ limit?: number }} [opts]
+ */
+export async function searchOpenConferences(query, opts = {}) {
+  const q = String(query ?? "").trim();
+  if (q.length < 2) return [];
+
+  const limit = opts.limit ?? 8;
+  const rows = await prisma.conference.findMany({
+    where: { publicationStatus: "PUBLISHED" },
+    orderBy: [{ startDate: "asc" }, { title: "asc" }],
+    take: 80,
+  });
+
+  const needle = q.toLowerCase();
+  const needleRef = normalizeConferenceReferenceInput(q);
+
+  return rows
+    .map(mapConferenceForUi)
+    .filter(isOpenPublicConference)
+    .filter((c) => {
+      const ref = normalizeConferenceReferenceInput(c.reference || "");
+      const titleMatch = c.title.toLowerCase().includes(needle);
+      const slugMatch = c.slug.toLowerCase().includes(needle);
+      // Prefix-only on reference so unique leading characters narrow results as users type.
+      const refMatch = ref.startsWith(needleRef);
+      return titleMatch || slugMatch || refMatch;
+    })
+    .slice(0, limit)
+    .map((c) => ({
+      id: c.id,
+      slug: c.slug,
+      reference: c.reference,
+      title: c.title,
+      dateRange: c.dateRange,
+      status: c.status,
+      statusLabel: STATUS_LABELS[c.status] ?? c.status,
+      href: `/conferences/${c.slug}`,
+    }));
+}
+
+/**
+ * Resolve an open conference by exact reference or slug/code.
+ * @param {string} raw
+ */
+export async function getOpenConferenceByCodeOrReference(raw) {
+  const code = String(raw ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  if (!code) return null;
+
+  const slugCandidate = code.toLowerCase().replace(/\s+/g, "-");
+  const refCandidate = code.toUpperCase().replace(/\s+/g, "");
+
+  const row = await prisma.conference.findFirst({
+    where: {
+      publicationStatus: "PUBLISHED",
+      OR: [
+        { slug: slugCandidate },
+        { reference: refCandidate },
+      ],
+    },
+  });
+
+  if (!row) return null;
+  const mapped = mapConferenceForUi(row);
+  if (!isOpenPublicConference(mapped)) return null;
+  return mapped;
 }
 
 /**

@@ -15,22 +15,36 @@ import {
 } from "@/lib/conferences/utils";
 import { ConferenceImage } from "@/components/ConferenceImage";
 import { OnlineStreamSection } from "@/components/conference/OnlineStreamSection";
-import { isCfpOpen, isRegistrableConference } from "@/lib/conferences/registrable";
+import { isCfpOpen, isRegistrableConference, allowsPublicRegistration } from "@/lib/conferences/registrable";
 import { canViewConferenceContent } from "@/lib/conferences/visibility";
+import { normalizeConferenceDays, getZonedDateTimeParts } from "@/lib/attendance/utils";
 import {
   ConferenceMemberMaterials,
   ConferenceMemberPresentations,
 } from "@/components/conference/ConferenceMemberContent";
+import { ConferenceAttendanceTab } from "@/components/conference/ConferenceAttendanceTab";
+import { ConferenceFeedbackTab } from "@/components/conference/ConferenceFeedbackTab";
 
 const tabs = [
   { id: "overview", label: "Overview" },
   { id: "cfp", label: "Call for Papers" },
   { id: "programme", label: "Programme" },
   { id: "registration", label: "Registration" },
+  { id: "attendance", label: "Attendance & certificates" },
+  { id: "feedback", label: "Feedback" },
   { id: "materials", label: "Materials" },
   { id: "presentations", label: "Presentations" },
   { id: "faqs", label: "FAQs" },
 ];
+
+/** Feedback opens once at least one conference day has started. */
+function haveConferenceDaysStarted(conference) {
+  const days = normalizeConferenceDays(conference.conferenceDays);
+  if (!days.length) return false;
+  const tz = conference.timezone || "Africa/Nairobi";
+  const { dateKey: todayKey } = getZonedDateTimeParts(new Date(), tz);
+  return days.some((day) => day.date <= todayKey);
+}
 
 function OverviewTab({ conference, registrationStatus }) {
   return (
@@ -61,6 +75,19 @@ function OverviewTab({ conference, registrationStatus }) {
         <h2 className="text-lg font-semibold text-foreground">Venue</h2>
         <p className="mt-3 text-sm text-muted-foreground">{conference.venue}</p>
       </section>
+      {conference.organiserName ? (
+        <section>
+          <h2 className="text-lg font-semibold text-foreground">Organised by</h2>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {conference.organiserName}
+            {conference.organiserShortName ? (
+              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                ({conference.organiserShortName})
+              </span>
+            ) : null}
+          </p>
+        </section>
+      ) : null}
       <section>
         <h2 className="text-lg font-semibold text-foreground">Dates</h2>
         <p className="mt-3 text-sm text-muted-foreground">{conference.dateRange}</p>
@@ -72,14 +99,14 @@ function OverviewTab({ conference, registrationStatus }) {
 
 const REG_STATUS_UI = {
   PENDING: {
-    title: "Registration pending approval",
+    title: "Registration is pending approval",
     className: "border-amber-200 bg-amber-50 text-amber-900",
-    body: "Your application is being reviewed. You can submit papers after approval.",
+    body: "Your application is being reviewed. You'll receive an access code by email once it is approved.",
   },
   NEEDS_REVISION: {
     title: "Action required on your registration",
     className: "border-amber-200 bg-amber-50 text-amber-900",
-    body: "Please check your dashboard for organiser feedback and update your application.",
+    body: "Please review the organiser feedback below and update your application.",
   },
   CONFIRMED: {
     title: "Registration approved",
@@ -166,14 +193,16 @@ function CfpTab({ conference, registrationStatus, isAuthenticated, myPapersHref 
         <h3 className="text-sm font-semibold text-foreground">Submit a paper</h3>
         {!isAuthenticated ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            <Link href={`/login?redirect=/conferences/${conference.slug}?tab=cfp`} className="text-primary hover:underline">
+            <Link href={`/login?mode=access&redirect=/conferences/${conference.slug}?tab=cfp`} className="text-primary hover:underline">
               Sign in
             </Link>{" "}
             to view and submit your papers for this conference.
           </p>
         ) : !registrationStatus ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            Register for this conference before submitting a paper.
+            {allowsPublicRegistration(conference)
+              ? "Register for this conference before submitting a paper."
+              : "You need an approved attendance record before submitting a paper. Contact the organisers if you were invited."}
           </p>
         ) : !approved ? (
           <p className="mt-2 text-sm text-muted-foreground">
@@ -191,7 +220,7 @@ function CfpTab({ conference, registrationStatus, isAuthenticated, myPapersHref 
             <Button
               variant="primary"
               className="mt-3"
-              href={myPapersHref ?? `/dashboard/my-registrations/${conference.slug}/papers`}
+              href={myPapersHref ?? `/conferences/${conference.slug}/my-papers`}
             >
               Submit paper for this conference
             </Button>
@@ -389,7 +418,9 @@ function PaymentStatusBlock({ conference, registrationStatus, paymentStatus }) {
 function RegistrationTab({ conference, registrationStatus, registration, isAuthenticated }) {
   const payment = conference.paymentDetails;
   const hasRegistration = Boolean(registrationStatus);
-  const canRegister = isRegistrableConference(conference) && !hasRegistration;
+  const publicReg = allowsPublicRegistration(conference);
+  const canRegister = publicReg && isRegistrableConference(conference) && !hasRegistration;
+  const mode = conference.registrationMode || "MANUAL_APPROVE";
 
   return (
     <div className="space-y-6">
@@ -398,13 +429,22 @@ function RegistrationTab({ conference, registrationStatus, registration, isAuthe
           status={registrationStatus}
           improvementRequest={registration?.improvementRequest}
         />
+      ) : mode === "OPEN_NO_REGISTRATION" ? (
+        <p className="text-sm text-muted-foreground">
+          This conference is open — no registration is required to view public details.
+        </p>
+      ) : mode === "ADMIN_UPLOAD" ? (
+        <p className="text-sm text-muted-foreground">
+          This is an invite-only conference. Attendance is by uploaded list; use your access code
+          to sign in. There is no public registration.
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Register to attend {conference.title}. Complete the registration form to secure your
-          place at the event.
+          Register to attend {conference.title}. After approval (or immediately, depending on the
+          conference settings), you receive an access code by email to sign in.
         </p>
       )}
-      {conference.registrationCloseAt ? (
+      {conference.registrationCloseAt && publicReg ? (
         <p className="text-sm text-foreground">
           Registration closes:{" "}
           <span className="font-medium">
@@ -511,20 +551,11 @@ function RegistrationTab({ conference, registrationStatus, registration, isAuthe
         <Button variant="primary" href={`/conferences/${conference.slug}/register`}>
           Register to attend
         </Button>
-      ) : hasRegistration ? null : (
+      ) : hasRegistration || !publicReg ? null : (
         <p className="text-sm text-muted-foreground">
-          Registration is not currently open. Both registration and call for papers must be
-          active.
+          Registration is not currently open for this conference.
         </p>
       )}
-      {hasRegistration && isAuthenticated ? (
-        <Link
-          href="/dashboard/my-registrations"
-          className="block text-sm text-primary hover:underline"
-        >
-          View all my registrations
-        </Link>
-      ) : null}
     </div>
   );
 }
@@ -564,18 +595,32 @@ function FaqsTab({ conference }) {
   );
 }
 
-function getVisibleTabs(conference, isAuthenticated) {
+function getVisibleTabs(conference, isAuthenticated, registrationStatus) {
   const programmeDays = normalizeProgrammeForDisplay(conference.programme);
   const hasSpeakers =
     Array.isArray(conference.speakers) && conference.speakers.length > 0;
+  const approved = isAuthenticated && registrationStatus === "CONFIRMED";
+
   return tabs.filter((tab) => {
-    if (tab.id === "programme") {
-      return programmeDays.length > 0 || hasSpeakers;
+    switch (tab.id) {
+      case "cfp":
+        return Boolean(conference.allowPaperSubmissions);
+      case "programme":
+        return programmeDays.length > 0 || hasSpeakers;
+      case "registration":
+        return allowsPublicRegistration(conference) || (isAuthenticated && Boolean(registrationStatus));
+      case "attendance":
+        return approved;
+      case "certificate":
+        return false;
+      case "feedback":
+        return approved && haveConferenceDaysStarted(conference);
+      case "materials":
+      case "presentations":
+        return isAuthenticated;
+      default:
+        return true;
     }
-    if (tab.id === "materials" || tab.id === "presentations") {
-      return isAuthenticated;
-    }
-    return true;
   });
 }
 
@@ -599,7 +644,7 @@ export function ConferenceTabs({
 }) {
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab") || initialTab;
-  const visibleTabs = getVisibleTabs(conference, isAuthenticated);
+  const visibleTabs = getVisibleTabs(conference, isAuthenticated, registrationStatus);
   const [activeTab, setActiveTab] = useState(
     tabFromUrl && visibleTabs.some((t) => t.id === tabFromUrl)
       ? tabFromUrl
@@ -665,6 +710,10 @@ export function ConferenceTabs({
             isAuthenticated={isAuthenticated}
           />
         ) : null}
+        {activeTab === "attendance" || activeTab === "certificate" ? (
+          <ConferenceAttendanceTab slug={conference.slug} />
+        ) : null}
+        {activeTab === "feedback" ? <ConferenceFeedbackTab conference={conference} /> : null}
         {activeTab === "materials" ? (
           <MaterialsTab slug={conference.slug} registrationStatus={registrationStatus} />
         ) : null}

@@ -4,6 +4,8 @@ import { requireSession } from "@/lib/auth/session";
 import { savePrivateUpload } from "@/lib/storage/secure-files";
 import { requireApprovedRegistration, getConferenceContextForPapers } from "@/lib/papers/access";
 import { mapPaperForAuthor } from "@/lib/papers/map";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -116,6 +118,16 @@ export async function POST(request, { params }) {
         },
       });
     }
+
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PAPER_SUBMIT,
+      description: `Submitted paper "${title}"`,
+      resourceType: "paper",
+      resourceId: row.id,
+      conferenceId: ctx.conference.id,
+    });
 
     return NextResponse.json({ ok: true, paper: mapPaperForAuthor(row) });
   } catch (err) {

@@ -53,7 +53,7 @@ export function SessionProvider({ children, initialSession = null }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to switch role");
         setSession(data.session);
-        const target = getDefaultDashboardPath(role);
+        const target = getDefaultDashboardPath(data.session);
         startTransition(() => {
           router.push(target);
           router.refresh();

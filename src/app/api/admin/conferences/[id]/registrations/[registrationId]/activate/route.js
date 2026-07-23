@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireConferenceAccess } from "@/lib/auth/guards";
-import { createConferenceAccessKeyRecord } from "@/lib/auth/access-key";
-import { getConferenceYear } from "@/lib/conferences/registrable";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
+import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
-export async function POST(_request, { params }) {
+export async function POST(request, { params }) {
   const { id: conferenceId, registrationId } = await params;
   const session = await requireConferenceAccess(conferenceId);
   if (!session) {
@@ -33,24 +34,6 @@ export async function POST(_request, { params }) {
   }
 
   const mapped = mapConferenceForUi(registration.conference);
-  const year = getConferenceYear(mapped);
-  const email = registration.user.email;
-
-  await prisma.conferenceAccessKey.updateMany({
-    where: {
-      conferenceId,
-      email,
-      revokedAt: null,
-    },
-    data: { revokedAt: new Date() },
-  });
-
-  const { displayKey } = await createConferenceAccessKeyRecord({
-    conferenceId,
-    email,
-    year,
-    userId: registration.userId,
-  });
 
   await prisma.conferenceRegistration.update({
     where: { id: registrationId },
@@ -77,15 +60,32 @@ export async function POST(_request, { params }) {
     });
   }
 
+  const keyResult = await issueAndEmailAccessKey({
+    user: registration.user,
+    conference: registration.conference,
+  });
+
   const updated = await prisma.conferenceRegistration.findUnique({
     where: { id: registrationId },
     include: { user: { select: userSelect } },
   });
 
+  await logActivity({
+    session,
+    request,
+    action: ACTIVITY_ACTIONS.REGISTRATION_ACTIVATE,
+    description: `Activated registration for ${registration.user.email}`,
+    resourceType: "registration",
+    resourceId: registrationId,
+    conferenceId,
+    metadata: { emailSent: keyResult.emailSent },
+  });
+
   return NextResponse.json({
     ok: true,
-    message: "Registration activated. Share the access key with the attendee.",
-    accessKey: displayKey,
-    registration: mapRegistrationForAdmin(updated),
+    message: keyResult.emailSent
+      ? "Registration activated. Access key emailed to the attendee."
+      : "Registration activated, but the access key email could not be sent. Use Resend access code.",
+    registration: mapRegistrationForAdmin(updated, { hasAccessKey: true }),
   });
 }

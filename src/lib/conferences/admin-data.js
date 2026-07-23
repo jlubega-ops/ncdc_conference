@@ -1,15 +1,26 @@
+import { mapPaperForAdmin } from "@/lib/papers/map";
+
 const userSelect = {
   id: true,
   email: true,
   name: true,
   mustChangePassword: true,
+  profileData: true,
 };
 
 /**
  * @param {any} row
+ * @param {{ hasAccessKey?: boolean }} [extras]
  */
-export function mapRegistrationForAdmin(row) {
+export function mapRegistrationForAdmin(row, extras = {}) {
   const form = row.formData && typeof row.formData === "object" ? row.formData : {};
+  const profile =
+    row.user?.profileData && typeof row.user.profileData === "object"
+      ? row.user.profileData
+      : {};
+  const accessKeyIssued =
+    extras.hasAccessKey ??
+    (row.status === "CONFIRMED" && Boolean(row.user));
   return {
     id: row.id,
     status: row.status,
@@ -23,20 +34,29 @@ export function mapRegistrationForAdmin(row) {
     reviewedAt: row.reviewedAt,
     registeredAt: row.registeredAt,
     updatedAt: row.updatedAt,
-    user: row.user,
-    accountActivated: row.user ? !row.user.mustChangePassword : false,
+    user: row.user
+      ? {
+          id: row.user.id,
+          email: row.user.email,
+          name: row.user.name,
+          mustChangePassword: row.user.mustChangePassword,
+          profileData: profile,
+        }
+      : row.user,
+    /** Access code has been issued for this conference registration. */
+    accountActivated: accessKeyIssued,
+    accessKeyIssued,
     formData: form,
     displayName:
       form.fullName ||
       [form.firstName, form.lastName].filter(Boolean).join(" ") ||
+      [profile.firstName, profile.lastName].filter(Boolean).join(" ") ||
       row.user?.name,
-    institution: form.institution ?? null,
+    institution: form.institution ?? profile.institution ?? null,
     attendanceMode: form.attendanceMode ?? null,
     subThemes: Array.isArray(form.subThemes) ? form.subThemes : [],
   };
 }
-
-import { mapPaperForAdmin } from "@/lib/papers/map";
 
 /**
  * @param {any} row

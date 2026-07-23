@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request) {
   try {
@@ -35,6 +37,15 @@ export async function POST(request) {
         passwordResetToken: null,
         passwordResetExpires: null,
       },
+    });
+
+    await logActivity({
+      request,
+      action: ACTIVITY_ACTIONS.AUTH_RESET_PASSWORD,
+      description: "Password reset completed",
+      resourceType: "user",
+      resourceId: user.id,
+      actorEmail: user.email,
     });
 
     return NextResponse.json({ ok: true, message: "Password updated. You can sign in now." });

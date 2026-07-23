@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   MY_REGISTRATIONS: "my_registrations",
   REPORTS: "reports",
   ACCESS_KEYS: "access_keys",
+  ACTIVITY_LOG: "activity_log",
 };
 
 const ROLE_PERMISSIONS = {
@@ -34,6 +35,7 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.REGISTRATIONS,
     PERMISSIONS.REPORTS,
     PERMISSIONS.ACCESS_KEYS,
+    PERMISSIONS.ACTIVITY_LOG,
   ],
   CONFERENCE_ADMIN: [
     PERMISSIONS.DASHBOARD,
@@ -52,17 +54,9 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.REVIEWER_PAPERS,
     PERMISSIONS.REPORTS,
   ],
-  ATTENDEE: [
-    PERMISSIONS.DASHBOARD,
-    PERMISSIONS.PROFILE,
-    PERMISSIONS.MY_REGISTRATIONS,
-    PERMISSIONS.SUBMIT_PAPER,
-    PERMISSIONS.MY_PAPERS,
-    PERMISSIONS.MY_PROGRAMME,
-    PERMISSIONS.MY_MATERIALS,
-    PERMISSIONS.MY_ATTENDANCE,
-    PERMISSIONS.MY_CERTIFICATES,
-  ],
+  // Attendees live entirely on their conference tabs (`/conferences/{slug}`) —
+  // no dashboard sidebar, no my-registrations/attendance/certificates pages.
+  ATTENDEE: [PERMISSIONS.PROFILE],
 };
 
 /**
@@ -98,6 +92,12 @@ export const DASHBOARD_NAV = [
     icon: "Users",
   },
   {
+    label: "Activity log",
+    href: "/dashboard/activity-log",
+    permission: PERMISSIONS.ACTIVITY_LOG,
+    icon: "ScrollText",
+  },
+  {
     label: "Manage Conference",
     href: "/dashboard/manage",
     permission: PERMISSIONS.MANAGE_CONFERENCE,
@@ -108,42 +108,6 @@ export const DASHBOARD_NAV = [
     href: "/dashboard/submissions",
     permission: PERMISSIONS.SUBMISSIONS,
     icon: "FileText",
-  },
-  {
-    label: "Submit paper",
-    href: "/dashboard/submit-paper",
-    permission: PERMISSIONS.SUBMIT_PAPER,
-    icon: "FilePlus",
-  },
-  {
-    label: "My papers",
-    href: "/dashboard/my-papers",
-    permission: PERMISSIONS.MY_PAPERS,
-    icon: "Files",
-  },
-  {
-    label: "Programme",
-    href: "/dashboard/programme",
-    permission: PERMISSIONS.MY_PROGRAMME,
-    icon: "CalendarDays",
-  },
-  {
-    label: "Conference materials",
-    href: "/dashboard/materials",
-    permission: PERMISSIONS.MY_MATERIALS,
-    icon: "BookOpen",
-  },
-  {
-    label: "Attendance",
-    href: "/dashboard/attendance",
-    permission: PERMISSIONS.MY_ATTENDANCE,
-    icon: "UserCheck",
-  },
-  {
-    label: "Certificates",
-    href: "/dashboard/certificates",
-    permission: PERMISSIONS.MY_CERTIFICATES,
-    icon: "Award",
   },
   {
     label: "Evaluations & comments",
@@ -162,12 +126,6 @@ export const DASHBOARD_NAV = [
     href: "/dashboard/registrations",
     permission: PERMISSIONS.REGISTRATIONS,
     icon: "UserPlus",
-  },
-  {
-    label: "My Registrations",
-    href: "/dashboard/my-registrations",
-    permission: PERMISSIONS.MY_REGISTRATIONS,
-    icon: "Ticket",
   },
   {
     label: "Reports",

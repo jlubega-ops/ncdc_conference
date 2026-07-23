@@ -5,6 +5,8 @@ import {
   deleteConferencePresentation,
   listConferencePresentations,
 } from "@/lib/conference-content/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -29,6 +31,15 @@ export async function POST(request, { params }) {
   try {
     const form = await request.formData();
     const presentation = await createConferencePresentation(id, form);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PRESENTATION_CREATE,
+      description: "Added conference presentation",
+      resourceType: "presentation",
+      resourceId: presentation.id,
+      conferenceId: id,
+    });
     return NextResponse.json({ presentation });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not add presentation.";
@@ -50,6 +61,15 @@ export async function DELETE(request, { params }) {
 
   try {
     await deleteConferencePresentation(id, presentationId);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PRESENTATION_DELETE,
+      description: "Deleted conference presentation",
+      resourceType: "presentation",
+      resourceId: presentationId,
+      conferenceId: id,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not delete presentation.";

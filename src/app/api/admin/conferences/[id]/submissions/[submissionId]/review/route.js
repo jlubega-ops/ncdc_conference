@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePaperReviewAccess } from "@/lib/auth/guards";
 import { reviewPaperSubmission } from "@/lib/papers/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request, { params }) {
   const { id, submissionId } = await params;
@@ -18,6 +20,17 @@ export async function POST(request, { params }) {
       action: body.action,
       reviewNotes: body.reviewNotes,
       improvementRequest: body.improvementRequest,
+    });
+
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PAPER_REVIEW,
+      description: `Paper review: ${body.action} → ${submission.status}`,
+      resourceType: "paper",
+      resourceId: submissionId,
+      conferenceId: id,
+      metadata: { action: body.action, status: submission.status },
     });
 
     return NextResponse.json({ ok: true, submission });

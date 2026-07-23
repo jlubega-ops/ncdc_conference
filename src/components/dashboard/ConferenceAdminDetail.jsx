@@ -17,14 +17,18 @@ import { ConferenceAdminInfoTab } from "@/components/dashboard/admin-tabs/Confer
 import { ConferenceAdminRegistrationsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminRegistrationsTab";
 import { ConferenceAdminSubmissionsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminSubmissionsTab";
 import { ConferenceAdminFeedbackTab } from "@/components/dashboard/admin-tabs/ConferenceAdminFeedbackTab";
+import { ConferenceAdminAttendanceTab } from "@/components/dashboard/admin-tabs/ConferenceAdminAttendanceTab";
+import { ConferenceAdminGiftsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminGiftsTab";
 import { ConferenceAdminAdminsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminAdminsTab";
 import { ConferenceAdminMaterialsHub } from "@/components/dashboard/admin-tabs/ConferenceAdminMaterialsHub";
 
 const BASE_TABS = [
   { id: "info", label: "Info", countKey: null },
   { id: "registrations", label: "Registrations", countKey: "registrations" },
+  { id: "attendance", label: "Attendance", countKey: null },
+  { id: "gifts", label: "Gifts & awards", countKey: null },
   { id: "submissions", label: "Paper submissions", countKey: "submissions" },
-  { id: "feedback", label: "Evaluations & comments", countKey: "feedback" },
+  { id: "feedback", label: "Feedback", countKey: "feedback" },
   { id: "materials", label: "Materials", countKey: null },
   { id: "admins", label: "Conference admins", countKey: "admins" },
 ];
@@ -32,7 +36,7 @@ const BASE_TABS = [
 const TAB_BACK_LINKS = {
   submissions: { href: "/dashboard/submissions", label: "Paper submissions" },
   registrations: { href: "/dashboard/registrations", label: "Registrations" },
-  feedback: { href: "/dashboard/reviews", label: "Evaluations & comments" },
+  feedback: { href: "/dashboard/reviews", label: "Feedback" },
 };
 
 const VALID_TAB_IDS = new Set(BASE_TABS.map((t) => t.id));
@@ -220,7 +224,16 @@ export function ConferenceAdminDetail({
         <div className="p-5 sm:p-6">
           {activeTab === "info" ? <ConferenceAdminInfoTab conference={conference} /> : null}
           {activeTab === "registrations" ? (
-            <ConferenceAdminRegistrationsTab conferenceId={conference.id} />
+            <ConferenceAdminRegistrationsTab
+              conferenceId={conference.id}
+              registrationMode={conference.registrationMode}
+            />
+          ) : null}
+          {activeTab === "attendance" ? (
+            <ConferenceAdminAttendanceTab conferenceId={conference.id} />
+          ) : null}
+          {activeTab === "gifts" ? (
+            <ConferenceAdminGiftsTab conferenceId={conference.id} />
           ) : null}
           {activeTab === "submissions" ? (
             <ConferenceAdminSubmissionsTab conferenceId={conference.id} />

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/mailer";
 import { passwordResetEmail } from "@/lib/email/templates";
 import { getAppUrl } from "@/lib/email/config";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request) {
   try {
@@ -38,6 +40,15 @@ export async function POST(request) {
         }),
       });
     }
+
+    await logActivity({
+      request,
+      action: ACTIVITY_ACTIONS.AUTH_FORGOT_PASSWORD,
+      description: "Password reset requested",
+      resourceType: "user",
+      actorEmail: normalized,
+      metadata: { accountFound: Boolean(user?.passwordHash) },
+    });
 
     return NextResponse.json({
       ok: true,

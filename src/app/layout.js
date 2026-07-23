@@ -1,6 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
+import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -17,9 +16,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "NCDC Conference Management",
+  title: "Conference Management",
   description:
-    "Conference management system for the National Curriculum Development Centre, Uganda",
+    "Discover open conferences, register for events, and manage programmes from one place.",
 };
 
 export default async function RootLayout({ children }) {
@@ -38,9 +37,7 @@ export default async function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
         <SessionProvider initialSession={initialSession}>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <SiteChrome>{children}</SiteChrome>
           <ToastProvider />
         </SessionProvider>
       </body>

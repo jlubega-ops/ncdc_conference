@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSuperadmin } from "@/lib/auth/guards";
+import { prisma } from "@/lib/prisma";
 import { deleteUserByAdmin, updateUserByAdmin } from "@/lib/users/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function PATCH(request, { params }) {
   const session = await requireSuperadmin();
@@ -15,6 +18,14 @@ export async function PATCH(request, { params }) {
     if (result.errors) {
       return NextResponse.json({ errors: result.errors, error: "Validation failed." }, { status: 400 });
     }
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.USER_UPDATE,
+      description: `Updated user ${result.user.email}`,
+      resourceType: "user",
+      resourceId: id,
+    });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not update user.";
@@ -23,7 +34,7 @@ export async function PATCH(request, { params }) {
   }
 }
 
-export async function DELETE(_request, { params }) {
+export async function DELETE(request, { params }) {
   const session = await requireSuperadmin();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,7 +42,20 @@ export async function DELETE(_request, { params }) {
 
   try {
     const { id } = await params;
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      select: { email: true, name: true },
+    });
     const result = await deleteUserByAdmin(id, session.user.id);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.USER_DELETE,
+      description: `Deleted user ${existing?.email || id}`,
+      resourceType: "user",
+      resourceId: id,
+      metadata: { email: existing?.email || null },
+    });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not delete user.";

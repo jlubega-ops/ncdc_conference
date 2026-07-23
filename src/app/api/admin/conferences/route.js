@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceManager } from "@/lib/auth/guards";
+import { requireConferenceManager, requireSuperadmin } from "@/lib/auth/guards";
+import { getManagedConferenceIds } from "@/lib/auth/conference-access";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
 import { slugify } from "@/lib/conferences/utils";
+import { generateConferenceReference, normalizeOrganiserShortName } from "@/lib/conferences/reference";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 /**
  * @param {any} input
@@ -19,8 +25,11 @@ function buildConferencePayload(input, userId) {
 
   const startDate = input.startDate ? new Date(input.startDate) : null;
   const endDate = input.endDate ? new Date(input.endDate) : null;
-  const cfpOpenAt = input.cfpOpenAt ? new Date(input.cfpOpenAt) : null;
-  const cfpCloseAt = input.cfpCloseAt ? new Date(input.cfpCloseAt) : null;
+  const allowPaperSubmissions = Boolean(input.allowPaperSubmissions);
+  const cfpOpenAt =
+    allowPaperSubmissions && input.cfpOpenAt ? new Date(input.cfpOpenAt) : null;
+  const cfpCloseAt =
+    allowPaperSubmissions && input.cfpCloseAt ? new Date(input.cfpCloseAt) : null;
   const registrationOpenAt = input.registrationOpenAt ? new Date(input.registrationOpenAt) : null;
   const registrationCloseAt = input.registrationCloseAt ? new Date(input.registrationCloseAt) : null;
   const conferenceDays = Array.isArray(input.conferenceDays)
@@ -40,9 +49,19 @@ function buildConferencePayload(input, userId) {
   });
 
   const publicationStatus = input.publicationStatus === "PUBLISHED" ? "PUBLISHED" : "DRAFT";
+  const organiserName = (input.organiserName ?? "").trim() || null;
+  const organiserShortName = normalizeOrganiserShortName(
+    input.organiserShortName,
+    organiserName || title,
+  );
 
   if (publicationStatus === "PUBLISHED") {
-    const publishErrors = validateConferenceForPublish(input);
+    const publishErrors = validateConferenceForPublish({
+      ...input,
+      allowPaperSubmissions,
+      organiserName,
+      organiserShortName,
+    });
     if (Object.keys(publishErrors).length > 0) {
       throw new Error(
         Object.values(publishErrors)[0] || "Complete all required fields before publishing.",
@@ -52,12 +71,28 @@ function buildConferencePayload(input, userId) {
 
   return {
     slug: slugify(input.slug?.trim() || title),
+    reference:
+      (input.reference ?? "").trim().toUpperCase() ||
+      generateConferenceReference({
+        year: startDate?.getFullYear() || new Date().getFullYear(),
+        organiserShortName,
+      }),
+    registrationMode: [
+      "AUTO_APPROVE",
+      "MANUAL_APPROVE",
+      "OPEN_NO_REGISTRATION",
+      "ADMIN_UPLOAD",
+    ].includes(input.registrationMode)
+      ? input.registrationMode
+      : "MANUAL_APPROVE",
     title,
     shortDescription:
       (input.shortDescription ?? "").trim() ||
       (input.description ?? "").trim().replace(/\s+/g, " ").slice(0, 200) ||
       null,
     description: (input.description ?? "").trim() || null,
+    organiserName,
+    organiserShortName,
     theme: (input.theme ?? "").trim() || null,
     subThemes: Array.isArray(input.subThemes) ? input.subThemes.filter(Boolean) : [],
     startDate,
@@ -69,17 +104,26 @@ function buildConferencePayload(input, userId) {
     publicationStatus,
     featured: Boolean(input.featured),
     cardImage: (input.cardImage ?? "").trim() || null,
+    allowPaperSubmissions,
     cfpOpenAt,
     cfpCloseAt,
     registrationOpenAt,
     registrationCloseAt,
     conferenceDays,
     timezone: (input.timezone ?? "Africa/Nairobi").trim() || "Africa/Nairobi",
-    cfpTopics: Array.isArray(input.cfpTopics) ? input.cfpTopics.filter(Boolean) : [],
-    submissionGuidelines: (input.submissionGuidelines ?? "").trim() || null,
+    cfpTopics: allowPaperSubmissions
+      ? Array.isArray(input.cfpTopics)
+        ? input.cfpTopics.filter(Boolean)
+        : []
+      : [],
+    submissionGuidelines: allowPaperSubmissions
+      ? (input.submissionGuidelines ?? "").trim() || null
+      : null,
     programme: cascaded.programme,
     speakers: cascaded.speakers,
     faqs: Array.isArray(input.faqs) ? input.faqs : [],
+    feedbackSettings: input.feedbackSettings ?? null,
+    giftsSettings: input.giftsSettings ?? null,
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
@@ -96,16 +140,21 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const managedIds = getManagedConferenceIds(session);
   const rows = await prisma.conference.findMany({
+    where: managedIds === null ? undefined : { id: { in: managedIds } },
     orderBy: [{ updatedAt: "desc" }],
   });
   return NextResponse.json({ conferences: rows.map(mapConferenceForUi) });
 }
 
 export async function POST(request) {
-  const session = await requireConferenceManager();
+  const session = await requireSuperadmin();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Only system administrators can create conferences." },
+      { status: 401 },
+    );
   }
 
   try {
@@ -113,6 +162,19 @@ export async function POST(request) {
     const data = buildConferencePayload(input, session.user.id);
 
     const created = await prisma.conference.create({ data });
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.CONFERENCE_CREATE,
+      description: `Created conference "${created.title}" (${created.publicationStatus}).`,
+      resourceType: "conference",
+      resourceId: created.id,
+      conferenceId: created.id,
+      metadata: {
+        slug: created.slug,
+        publicationStatus: created.publicationStatus,
+      },
+    });
     return NextResponse.json(
       {
         conference: mapConferenceForUi(created),

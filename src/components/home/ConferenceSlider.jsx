@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { STATUS_LABELS } from "@/lib/conferences/constants";
+import { allowsPublicRegistration } from "@/lib/conferences/registrable";
 
 const AUTO_ADVANCE_MS = 6000;
 
 /**
- * @param {{ slides: Array<{ slug: string, title: string, dateRange: string, location: string, status: string, image: string, imageAlt: string }> }} props
+ * @param {{ slides: Array<{ slug: string, title: string, dateRange: string, location: string, status: string, image: string, imageAlt: string, registrationMode?: string }> }} props
  */
 export function ConferenceSlider({ slides }) {
   const [index, setIndex] = useState(0);
@@ -85,13 +86,15 @@ export function ConferenceSlider({ slides }) {
             <Button variant="primary" href={`/conferences/${slide.slug}`}>
               View Details
             </Button>
-            <Button
-              variant="outline"
-              href={`/conferences/${slide.slug}/register`}
-              className="border-white/40 bg-white/10 text-white hover:bg-white/20"
-            >
-              Register
-            </Button>
+            {allowsPublicRegistration(slide) ? (
+              <Button
+                variant="outline"
+                href={`/conferences/${slide.slug}/register`}
+                className="border-white/40 bg-white/10 text-white hover:bg-white/20"
+              >
+                Register
+              </Button>
+            ) : null}
           </div>
         </div>
 

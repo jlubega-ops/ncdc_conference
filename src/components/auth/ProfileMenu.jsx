@@ -65,8 +65,14 @@ export function ProfileMenu() {
         disabled={switching}
       >
         <UserAvatar user={user} />
-        <span className="hidden max-w-[120px] truncate text-sm font-medium text-foreground sm:block">
-          {user.name ?? user.email}
+        <span className="hidden min-w-0 flex-col text-left sm:flex">
+          <span className="max-w-[160px] truncate text-sm font-medium text-foreground">
+            {user.name ?? user.email}
+          </span>
+          <span className="max-w-[160px] truncate text-xs text-muted-foreground">
+            {user.email}
+            {user.telephone ? ` · ${user.telephone}` : ""}
+          </span>
         </span>
         <Icon icon={ChevronDown} size="sm" className="text-muted-foreground" />
       </button>
@@ -81,6 +87,9 @@ export function ProfileMenu() {
               {user.name ?? "Account"}
             </p>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            {user.telephone ? (
+              <p className="truncate text-xs text-muted-foreground">{user.telephone}</p>
+            ) : null}
             <p className="mt-1 text-xs font-medium text-primary">
               {ROLE_LABELS[activeRole] ?? activeRole}
             </p>

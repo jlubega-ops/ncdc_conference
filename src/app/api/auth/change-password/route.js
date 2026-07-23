@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { requireSession } from "@/lib/auth/session";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request) {
   const session = await requireSession();
@@ -51,6 +53,15 @@ export async function POST(request) {
         passwordHash: await hashPassword(newPassword),
         mustChangePassword: false,
       },
+    });
+
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.AUTH_CHANGE_PASSWORD,
+      description: "Password changed",
+      resourceType: "user",
+      resourceId: user.id,
     });
 
     return NextResponse.json({ ok: true, redirect: "/dashboard/my-registrations" });

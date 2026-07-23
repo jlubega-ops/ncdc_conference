@@ -6,6 +6,8 @@ import {
   listConferenceResources,
 } from "@/lib/conference-content/service";
 import { RESOURCE_TYPES } from "@/lib/conference-content/constants";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -49,6 +51,16 @@ export async function POST(request, { params }) {
   try {
     const form = await request.formData();
     const resource = await createConferenceResource(id, type, form);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.RESOURCE_CREATE,
+      description: `Added ${type.toLowerCase()} resource`,
+      resourceType: "resource",
+      resourceId: resource.id,
+      conferenceId: id,
+      metadata: { type },
+    });
     return NextResponse.json({ resource });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not add resource.";
@@ -70,6 +82,15 @@ export async function DELETE(request, { params }) {
 
   try {
     await deleteConferenceResource(id, resourceId);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.RESOURCE_DELETE,
+      description: "Deleted conference resource",
+      resourceType: "resource",
+      resourceId,
+      conferenceId: id,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not delete resource.";

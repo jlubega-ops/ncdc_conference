@@ -40,14 +40,49 @@ export const SPEAKER_TYPE_LABELS = Object.fromEntries(
 export const FORM_SECTIONS = [
   { id: "basics", label: "Basics" },
   { id: "schedule", label: "Schedule & venue" },
+  { id: "registration", label: "Registration" },
   { id: "media", label: "Images" },
   { id: "cfp", label: "Call for papers" },
   { id: "programme", label: "Programme" },
   { id: "speakers", label: "Speakers" },
+  { id: "feedback", label: "Feedback" },
+  { id: "gifts", label: "Awards & gifts" },
   { id: "faqs", label: "FAQs" },
   { id: "payments", label: "Payments" },
   { id: "contacts", label: "Contacts" },
 ];
+
+/** How attendees join this conference. */
+export const REGISTRATION_MODES = [
+  {
+    value: "AUTO_APPROVE",
+    label: "Auto-approve registration",
+    description:
+      "Users register online and are approved immediately. They receive an access code by email.",
+  },
+  {
+    value: "MANUAL_APPROVE",
+    label: "Manual approval",
+    description:
+      "Users register online, then an admin must approve. Access code is emailed after approval.",
+  },
+  {
+    value: "OPEN_NO_REGISTRATION",
+    label: "Open — no registration",
+    description:
+      "No registration form or button. Anyone can view the public conference page without signing up.",
+  },
+  {
+    value: "ADMIN_UPLOAD",
+    label: "Admin uploads attendee list",
+    description:
+      "Invite-only. Not listed on the public conferences page. Admins upload attendees from a spreadsheet; each receives an access code to open the event.",
+  },
+];
+
+export const REGISTRATION_MODE_LABELS = Object.fromEntries(
+  REGISTRATION_MODES.map((m) => [m.value, m.label]),
+);
 
 export const DEFAULT_PAID_VISIBILITY = {
   viewProgramme: true,

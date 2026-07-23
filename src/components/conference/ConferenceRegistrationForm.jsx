@@ -144,10 +144,15 @@ export function ConferenceRegistrationForm({ conference }) {
 
       if (!res.ok) {
         if (data.errors) setErrors(data.errors);
-        setFormError(data.error ?? "Registration failed. Please check your details.");
-        if (data.redirect) {
-          setSuccess(data.error ? "" : (data.message ?? ""));
+        if (data.code === "ALREADY_APPLIED" || data.code === "ALREADY_REGISTERED") {
+          setSuccess({
+            message: data.error,
+            redirect: data.redirect ?? "/login?mode=access",
+            status: data.code === "ALREADY_REGISTERED" ? "CONFIRMED" : "PENDING",
+          });
+          return;
         }
+        setFormError(data.error ?? "Registration failed. Please check your details.");
         return;
       }
 
@@ -156,6 +161,7 @@ export function ConferenceRegistrationForm({ conference }) {
           data.message ??
           "Registration received. Check your email for sign-in details. Your application is pending approval.",
         redirect: data.redirect ?? null,
+        status: data.status ?? null,
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
@@ -167,14 +173,23 @@ export function ConferenceRegistrationForm({ conference }) {
 
   if (success) {
     const message = typeof success === "string" ? success : success.message;
+    const status = typeof success === "object" ? success.status : null;
     const loginHref = typeof success === "object" && success.redirect ? success.redirect : "/login";
+    const title =
+      status === "CONFIRMED"
+        ? "You are registered"
+        : status === "PENDING"
+          ? "Registration is pending approval"
+          : "Registration submitted";
     return (
       <div className="rounded-lg border border-primary/30 bg-primary-light p-6">
-        <h2 className="text-lg font-semibold text-foreground">Registration submitted</h2>
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Button variant="outline" href={loginHref}>
-            Sign in
+            {String(loginHref).includes("access")
+              ? "Sign in with access code"
+              : "Sign in"}
           </Button>
           <Button variant="ghost" href={`/conferences/${conference.slug}`}>
             Back to conference

@@ -28,10 +28,16 @@ export default async function ConferenceRegistrationsPage({ params }) {
       </Button>
       <div>
         <h1 className="text-2xl font-semibold text-foreground">{conference.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Registrations</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Registrations
+          {conference.reference ? ` · Ref ${conference.reference}` : ""}
+        </p>
       </div>
       <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <ConferenceAdminRegistrationsTab conferenceId={conference.id} />
+        <ConferenceAdminRegistrationsTab
+          conferenceId={conference.id}
+          registrationMode={conference.registrationMode}
+        />
       </div>
     </div>
   );

@@ -1,20 +1,14 @@
 /** Links shown to visitors who are not signed in */
 export const publicNavLinks = [
   { label: "Home", href: "/" },
-  { label: "Conferences", href: "/conferences" },
-  { label: "Resources", href: "/resources" },
   { label: "About", href: "/about" },
 ];
 
 /** Compact header links when signed in as attendee */
-export const attendeeHeaderNav = [
-  { label: "Conferences", href: "/conferences" },
-  { label: "My registrations", href: "/dashboard/my-registrations" },
-];
+export const attendeeHeaderNav = [];
 
 /** Compact header links when signed in as staff */
 export const staffHeaderNav = [
-  { label: "Conferences", href: "/conferences" },
   { label: "Dashboard", href: "/dashboard" },
 ];
 
@@ -34,7 +28,7 @@ export const mainNavLinks = publicNavLinks;
 
 export const footerLinks = {
   about: [
-    { label: "About NCDC", href: "/about" },
+    { label: "About", href: "/about" },
     { label: "Contact", href: "/contact" },
     { label: "FAQs", href: "/about#faqs" },
   ],

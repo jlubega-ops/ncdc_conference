@@ -8,6 +8,8 @@ import {
   listConferenceAdmins,
   removeConferenceAdmin,
 } from "@/lib/conference-admins/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
@@ -62,6 +64,17 @@ export async function POST(request, { params }) {
         gender,
       });
 
+      await logActivity({
+        session,
+        request,
+        action: ACTIVITY_ACTIONS.CONFERENCE_ADMIN_ASSIGN,
+        description: `Assigned new conference admin ${email}`,
+        resourceType: "conference",
+        resourceId: conferenceId,
+        conferenceId,
+        metadata: { emailSent: result.emailSent, mode: "new" },
+      });
+
       return NextResponse.json({
         admins: result.admins,
         message: result.emailSent
@@ -86,6 +99,18 @@ export async function POST(request, { params }) {
       message =
         "User is a system super admin (full access to all conferences). Conference admin role recorded for this conference.";
     }
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.CONFERENCE_ADMIN_ASSIGN,
+      description: alreadyAssigned
+        ? "Confirmed conference admin assignment"
+        : "Assigned conference admin",
+      resourceType: "user",
+      resourceId: userId,
+      conferenceId,
+      metadata: { alreadyAssigned, isSuperadmin },
+    });
     return NextResponse.json({
       admins,
       alreadyAssigned,
@@ -111,6 +136,15 @@ export async function DELETE(request, { params }) {
 
   try {
     const admins = await removeConferenceAdmin(conferenceId, userId);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.CONFERENCE_ADMIN_REMOVE,
+      description: "Removed conference admin assignment",
+      resourceType: "user",
+      resourceId: userId,
+      conferenceId,
+    });
     return NextResponse.json({
       ok: true,
       admins,

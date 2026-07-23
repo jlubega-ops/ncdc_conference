@@ -25,17 +25,36 @@ export function isDateWindowOpen(openAt, closeAt, now = new Date()) {
  * @param {Date} [now]
  */
 export function isCfpOpen(conference, now = new Date()) {
+  if (!conference?.allowPaperSubmissions) return false;
   return isDateWindowOpen(conference.cfpOpenAt, conference.cfpCloseAt, now);
 }
 
 export function isRegistrableConference(conference, now = new Date()) {
+  const mode = conference.registrationMode || "MANUAL_APPROVE";
+  if (mode === "OPEN_NO_REGISTRATION" || mode === "ADMIN_UPLOAD") {
+    return false;
+  }
+
   const registrationOpen = isDateWindowOpen(
     conference.registrationOpenAt,
     conference.registrationCloseAt,
     now,
   );
+  // Prefer registration window; fall back to CFP window for older conferences.
+  if (conference.registrationOpenAt && conference.registrationCloseAt) {
+    return registrationOpen;
+  }
   const cfpOpen = isDateWindowOpen(conference.cfpOpenAt, conference.cfpCloseAt, now);
-  return registrationOpen && cfpOpen;
+  return registrationOpen || cfpOpen;
+}
+
+/**
+ * Whether the public Register button should appear.
+ * @param {any} conference
+ */
+export function allowsPublicRegistration(conference) {
+  const mode = conference.registrationMode || "MANUAL_APPROVE";
+  return mode === "AUTO_APPROVE" || mode === "MANUAL_APPROVE";
 }
 
 /**

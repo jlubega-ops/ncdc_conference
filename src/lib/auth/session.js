@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getDistinctRolesForSwitch, getHighestRole } from "@/lib/auth/roles";
 import { getPermissionsForRole } from "@/lib/auth/permissions";
+import { getProfileFromUser } from "@/lib/users/profile";
 
 export const SESSION_COOKIE = "ncdc_session";
 const SESSION_DAYS = 7;
@@ -59,8 +60,9 @@ export async function clearSessionCookie(response) {
  * @param {string} userId
  * @param {string} activeRole
  * @param {import("next/server").NextRequest} [request]
+ * @param {{ activeConferenceId?: string | null }} [opts]
  */
-export async function createUserSession(userId, activeRole, request) {
+export async function createUserSession(userId, activeRole, request, opts = {}) {
   const token = generateSessionToken();
   const tokenHash = hashToken(token);
 
@@ -71,6 +73,7 @@ export async function createUserSession(userId, activeRole, request) {
         userId,
         tokenHash,
         activeRole,
+        activeConferenceId: opts.activeConferenceId ?? null,
         expiresAt: sessionExpiry(),
         userAgent: request?.headers.get("user-agent") ?? undefined,
         ipAddress:
@@ -124,18 +127,24 @@ export async function getCurrentSession() {
   if (!record) return null;
 
   const { user, activeRole } = record;
-  const roleNames = user.roles.map((r) => r.role);
   const availableRoles = getDistinctRolesForSwitch(user.roles);
+  const profile = getProfileFromUser(user);
+  const displayName = profile.fullName || user.name || user.email;
+  const telephone = profile.telephone
+    ? `${profile.countryCode || ""} ${profile.telephone}`.trim()
+    : null;
 
   return {
     user: {
       id: user.id,
       email: user.email,
-      name: user.name,
+      name: displayName,
       image: user.image,
+      telephone,
       mustChangePassword: user.mustChangePassword,
     },
     activeRole,
+    activeConferenceId: record.activeConferenceId ?? null,
     availableRoles,
     canSwitchRole: availableRoles.length > 1,
     permissions: getPermissionsForRole(activeRole),

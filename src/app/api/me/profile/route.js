@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { getUserProfile, updateUserProfile } from "@/lib/users/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function GET() {
   const session = await requireSession();
@@ -24,6 +26,14 @@ export async function PATCH(request) {
     if (result.errors) {
       return NextResponse.json({ errors: result.errors, error: "Validation failed." }, { status: 400 });
     }
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PROFILE_UPDATE,
+      description: "Updated profile",
+      resourceType: "user",
+      resourceId: session.user.id,
+    });
     return NextResponse.json({ ok: true, profile: result.profile });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not update profile.";

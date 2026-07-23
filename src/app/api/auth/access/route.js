@@ -1,44 +1,52 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAccessKey } from "@/lib/auth/password";
-import { parseAccessKey } from "@/lib/auth/access-key";
-import {
-  createUserSession,
-  resolveLoginActiveRole,
-  setSessionCookie,
-} from "@/lib/auth/session";
+import { accessKeyLookupToken, parseAccessKey } from "@/lib/auth/access-key";
+import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
+import { createUserSession, setSessionCookie } from "@/lib/auth/session";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const email = (body.email ?? "").trim().toLowerCase();
     const rawKey = body.accessKey ?? "";
+    const emailHint = (body.email ?? "").trim().toLowerCase();
 
-    if (!email || !rawKey?.trim()) {
-      return NextResponse.json(
-        { error: "Email and access key are required." },
-        { status: 400 },
-      );
+    if (!rawKey?.trim()) {
+      return NextResponse.json({ error: "Access key is required." }, { status: 400 });
     }
 
     const parsed = parseAccessKey(rawKey);
     if (!parsed) {
+      await logActivity({
+        request,
+        action: ACTIVITY_ACTIONS.AUTH_ACCESS_KEY_FAILED,
+        description: "Access key login failed: invalid format",
+        success: false,
+        metadata: { emailHint: emailHint || null },
+      });
       return NextResponse.json(
         {
           error:
-            "Invalid access key format. Use the full key from your email, e.g. NCDC/Conf2027/ABCDEFGH (uppercase, no spaces).",
+            "Invalid access key format. Use the full key from your email, e.g. ORG/CONF2027/ABCDEFGH (all caps).",
           code: "INVALID_KEY_FORMAT",
         },
         { status: 400 },
       );
     }
 
+    const lookup = accessKeyLookupToken(parsed.fullKey);
     const keys = await prisma.conferenceAccessKey.findMany({
       where: {
-        email,
         conferenceYear: parsed.year,
-        keySuffix: parsed.suffix,
         revokedAt: null,
+        OR: [
+          { keySuffix: lookup },
+          // Legacy rows stored plaintext suffix before encryption change.
+          { keySuffix: parsed.suffix },
+        ],
+        ...(emailHint ? { email: emailHint } : {}),
       },
       include: { conference: true },
     });
@@ -46,6 +54,8 @@ export async function POST(request) {
     let matchedKey = null;
     for (const record of keys) {
       if (record.expiresAt && record.expiresAt < new Date()) continue;
+      const org = normalizeOrganiserShortName(record.conference?.organiserShortName);
+      if (parsed.org !== org) continue;
       const valid = await verifyAccessKey(parsed.fullKey, record.keyHash);
       if (valid) {
         matchedKey = record;
@@ -54,36 +64,28 @@ export async function POST(request) {
     }
 
     if (!matchedKey) {
-      const pendingRegistration = await prisma.conferenceRegistration.findFirst({
-        where: {
-          user: { email },
-          conference: { startDate: { not: null } },
-          status: "PENDING",
-        },
-        include: { conference: true, user: true },
+      await logActivity({
+        request,
+        action: ACTIVITY_ACTIONS.AUTH_ACCESS_KEY_FAILED,
+        description: "Access key login failed: invalid or expired code",
+        success: false,
+        metadata: { emailHint: emailHint || null, year: parsed.year },
       });
-
-      if (pendingRegistration) {
-        return NextResponse.json(
-          {
-            error: `Your registration for ${pendingRegistration.conference.title} is awaiting admin activation. You cannot sign in until your account is activated and an access key is issued.`,
-            code: "PENDING_ACTIVATION",
-          },
-          { status: 403 },
-        );
-      }
-
       return NextResponse.json(
         {
           error:
-            "Invalid access key for this email. Check that you entered the full key exactly as sent (NCDC/Conf[year]/[code]).",
+            "Invalid access code. Enter the full code exactly as sent (ORG/CONF[YEAR]/[CODE]).",
           code: "INVALID_KEY",
         },
         { status: 401 },
       );
     }
 
+    const email = matchedKey.email.trim().toLowerCase();
     const { conference } = matchedKey;
+    if (!conference?.slug) {
+      return NextResponse.json({ error: "Conference not found for this access code." }, { status: 404 });
+    }
 
     let user = await prisma.user.findUnique({
       where: { email },
@@ -117,7 +119,7 @@ export async function POST(request) {
       if (registration?.status === "PENDING") {
         return NextResponse.json(
           {
-            error: `Your registration for ${conference.title} is awaiting admin activation. Use your access key after approval.`,
+            error: `Your registration for ${conference.title} is pending approval. You will receive an access code by email once it is approved.`,
             code: "PENDING_ACTIVATION",
           },
           { status: 403 },
@@ -135,10 +137,6 @@ export async function POST(request) {
             conferenceId: conference.id,
           },
         });
-        user = await prisma.user.findUnique({
-          where: { id: user.id },
-          include: { roles: true },
-        });
       }
     }
 
@@ -147,17 +145,30 @@ export async function POST(request) {
       data: { userId: user.id },
     });
 
-    const activeRole = await resolveLoginActiveRole(user.id);
-    if (!activeRole) {
-      return NextResponse.json({ error: "No roles assigned." }, { status: 403 });
-    }
-
-    const token = await createUserSession(user.id, activeRole, request);
+    const token = await createUserSession(user.id, "ATTENDEE", request, {
+      activeConferenceId: conference.id,
+    });
+    const redirect = `/conferences/${conference.slug}`;
     const response = NextResponse.json({
       ok: true,
-      redirect: "/dashboard",
+      redirect,
+      conferenceId: conference.id,
+      conferenceSlug: conference.slug,
     });
     await setSessionCookie(response, token);
+    await logActivity({
+      session: {
+        user: { id: user.id, email: user.email, name: user.name },
+        activeRole: "ATTENDEE",
+      },
+      request,
+      action: ACTIVITY_ACTIONS.AUTH_ACCESS_KEY,
+      description: `Signed in with access key for ${conference.title}`,
+      resourceType: "user",
+      resourceId: user.id,
+      conferenceId: conference.id,
+      metadata: { conferenceSlug: conference.slug },
+    });
     return response;
   } catch (err) {
     console.error("Access login error:", err);

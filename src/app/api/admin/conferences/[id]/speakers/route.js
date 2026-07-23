@@ -4,6 +4,8 @@ import {
   getConferenceSpeakers,
   updateConferenceSpeakers,
 } from "@/lib/conference-content/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
@@ -26,6 +28,16 @@ export async function PATCH(request, { params }) {
   try {
     const body = await request.json();
     const speakers = await updateConferenceSpeakers(id, body.speakers);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.CONFERENCE_SPEAKERS_UPDATE,
+      description: `Updated speakers (${speakers.length} total)`,
+      resourceType: "conference",
+      resourceId: id,
+      conferenceId: id,
+      metadata: { speakerCount: speakers.length },
+    });
     return NextResponse.json({ speakers });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not update speakers.";

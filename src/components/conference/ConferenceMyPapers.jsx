@@ -88,11 +88,8 @@ export function ConferenceMyPapers({ slug, conferenceTitle, backHref }) {
           <h1 className="text-xl font-semibold text-foreground">{conferenceTitle}</h1>
         </div>
         <div className="flex flex-col items-end gap-1 text-sm">
-          <Link href="/dashboard/my-papers" className="text-primary hover:underline">
-            View all my papers
-          </Link>
           <Link
-            href={backHref ?? `/dashboard/my-registrations/${slug}?tab=cfp`}
+            href={backHref ?? `/conferences/${slug}?tab=cfp`}
             className="text-muted-foreground hover:text-primary"
           >
             ← Back to conference

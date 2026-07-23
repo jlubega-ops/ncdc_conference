@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { requireConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
 import { slugify } from "@/lib/conferences/utils";
+import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 /**
  * @param {any} input
@@ -18,8 +23,11 @@ function buildUpdatePayload(input) {
 
   const startDate = input.startDate ? new Date(input.startDate) : null;
   const endDate = input.endDate ? new Date(input.endDate) : null;
-  const cfpOpenAt = input.cfpOpenAt ? new Date(input.cfpOpenAt) : null;
-  const cfpCloseAt = input.cfpCloseAt ? new Date(input.cfpCloseAt) : null;
+  const allowPaperSubmissions = Boolean(input.allowPaperSubmissions);
+  const cfpOpenAt =
+    allowPaperSubmissions && input.cfpOpenAt ? new Date(input.cfpOpenAt) : null;
+  const cfpCloseAt =
+    allowPaperSubmissions && input.cfpCloseAt ? new Date(input.cfpCloseAt) : null;
   const registrationOpenAt = input.registrationOpenAt ? new Date(input.registrationOpenAt) : null;
   const registrationCloseAt = input.registrationCloseAt ? new Date(input.registrationCloseAt) : null;
   const conferenceDays = Array.isArray(input.conferenceDays)
@@ -38,9 +46,19 @@ function buildUpdatePayload(input) {
     conferenceDays,
   });
   const publicationStatus = input.publicationStatus === "PUBLISHED" ? "PUBLISHED" : "DRAFT";
+  const organiserName = (input.organiserName ?? "").trim() || null;
+  const organiserShortName = normalizeOrganiserShortName(
+    input.organiserShortName,
+    organiserName || title,
+  );
 
   if (publicationStatus === "PUBLISHED") {
-    const publishErrors = validateConferenceForPublish(input);
+    const publishErrors = validateConferenceForPublish({
+      ...input,
+      allowPaperSubmissions,
+      organiserName,
+      organiserShortName,
+    });
     if (Object.keys(publishErrors).length > 0) {
       throw new Error(
         Object.values(publishErrors)[0] || "Complete all required fields before publishing.",
@@ -50,12 +68,27 @@ function buildUpdatePayload(input) {
 
   return {
     slug: slugify(input.slug?.trim() || title),
+    ...(typeof input.reference === "string" && input.reference.trim()
+      ? { reference: input.reference.trim().toUpperCase() }
+      : {}),
+    ...(
+      [
+        "AUTO_APPROVE",
+        "MANUAL_APPROVE",
+        "OPEN_NO_REGISTRATION",
+        "ADMIN_UPLOAD",
+      ].includes(input.registrationMode)
+        ? { registrationMode: input.registrationMode }
+        : {}
+    ),
     title,
     shortDescription:
       (input.shortDescription ?? "").trim() ||
       (input.description ?? "").trim().replace(/\s+/g, " ").slice(0, 200) ||
       null,
     description: (input.description ?? "").trim() || null,
+    organiserName,
+    organiserShortName,
     theme: (input.theme ?? "").trim() || null,
     subThemes: Array.isArray(input.subThemes) ? input.subThemes.filter(Boolean) : [],
     startDate,
@@ -67,17 +100,26 @@ function buildUpdatePayload(input) {
     publicationStatus,
     featured: Boolean(input.featured),
     cardImage: (input.cardImage ?? "").trim() || null,
+    allowPaperSubmissions,
     cfpOpenAt,
     cfpCloseAt,
     registrationOpenAt,
     registrationCloseAt,
     conferenceDays,
     timezone: (input.timezone ?? "Africa/Nairobi").trim() || "Africa/Nairobi",
-    cfpTopics: Array.isArray(input.cfpTopics) ? input.cfpTopics.filter(Boolean) : [],
-    submissionGuidelines: (input.submissionGuidelines ?? "").trim() || null,
+    cfpTopics: allowPaperSubmissions
+      ? Array.isArray(input.cfpTopics)
+        ? input.cfpTopics.filter(Boolean)
+        : []
+      : [],
+    submissionGuidelines: allowPaperSubmissions
+      ? (input.submissionGuidelines ?? "").trim() || null
+      : null,
     programme: cascaded.programme,
     speakers: cascaded.speakers,
     faqs: Array.isArray(input.faqs) ? input.faqs : [],
+    feedbackSettings: input.feedbackSettings ?? null,
+    giftsSettings: input.giftsSettings ?? null,
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
@@ -101,6 +143,16 @@ export async function PATCH(request, { params }) {
       where: { id },
       data,
     });
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.CONFERENCE_UPDATE,
+      description: `Updated conference "${updated.title}" (${updated.publicationStatus}).`,
+      resourceType: "conference",
+      resourceId: updated.id,
+      conferenceId: updated.id,
+      metadata: { publicationStatus: updated.publicationStatus, slug: updated.slug },
+    });
     return NextResponse.json({
       conference: mapConferenceForUi(updated),
       message:
@@ -114,14 +166,33 @@ export async function PATCH(request, { params }) {
   }
 }
 
-export async function DELETE(_request, { params }) {
+export async function DELETE(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
+  const session = await requireSuperadmin();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Only system administrators can delete conferences." },
+      { status: 401 },
+    );
   }
   try {
+    const existing = await prisma.conference.findUnique({
+      where: { id },
+      select: { id: true, title: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Conference not found." }, { status: 404 });
+    }
     await prisma.conference.delete({ where: { id } });
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.CONFERENCE_DELETE,
+      description: `Deleted conference "${existing.title}".`,
+      resourceType: "conference",
+      resourceId: id,
+      conferenceId: id,
+    });
     return NextResponse.json({
       ok: true,
       message:

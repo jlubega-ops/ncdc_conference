@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getConferenceYear, isRegistrableConference } from "@/lib/conferences/registrable";
 import { mapConferenceForUi } from "@/lib/conferences/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request) {
   try {
@@ -78,7 +80,7 @@ export async function POST(request) {
       if (existingRegistration.status === "CONFIRMED") {
         return NextResponse.json(
           {
-            error: `You are already registered for ${conference.title}. Sign in with your email and the access key sent to you (format: NCDC/Conf${getConferenceYear(mapped)}/…).`,
+            error: `You are already registered for ${conference.title}. Sign in with your email and the access code sent to you (format: NCDC/CONF${getConferenceYear(mapped)}/…).`,
             code: "ALREADY_REGISTERED",
           },
           { status: 409 },
@@ -129,6 +131,17 @@ export async function POST(request) {
         },
       });
     }
+
+    await logActivity({
+      request,
+      action: ACTIVITY_ACTIONS.AUTH_SIGNUP,
+      description: `Attendee sign-up for ${conference.title}`,
+      resourceType: "registration",
+      resourceId: user.id,
+      conferenceId,
+      actorEmail: email,
+      metadata: { conferenceTitle: conference.title },
+    });
 
     return NextResponse.json({
       ok: true,

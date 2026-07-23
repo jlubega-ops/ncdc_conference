@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireConferenceAccess } from "@/lib/auth/guards";
 import { assignPaperReviewer } from "@/lib/papers/service";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request, { params }) {
   const { id, submissionId } = await params;
@@ -19,6 +21,20 @@ export async function POST(request, { params }) {
       mode: body.mode,
       email: body.email,
       name: body.name,
+    });
+
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.PAPER_ASSIGN_REVIEWER,
+      description: `Assigned reviewer to paper "${submission.title || submissionId}"`,
+      resourceType: "paper",
+      resourceId: submissionId,
+      conferenceId: id,
+      metadata: {
+        reviewerId: submission.assignedReviewerId ?? body.userId ?? null,
+        mode: body.mode ?? null,
+      },
     });
 
     return NextResponse.json({ ok: true, submission });

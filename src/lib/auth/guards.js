@@ -85,7 +85,7 @@ export async function requireSuperadminPage(returnPath) {
     redirect(`/login?redirect=${encodeURIComponent(returnPath)}`);
   }
   if (session.activeRole !== "SUPERADMIN") {
-    redirect(getDefaultDashboardPath(session.activeRole));
+    redirect(getDefaultDashboardPath(session));
   }
   return session;
 }
@@ -100,7 +100,7 @@ export async function requirePermissionPage(permission, returnPath) {
     redirect(`/login?redirect=${encodeURIComponent(returnPath)}`);
   }
   if (!hasPermission(session.activeRole, permission)) {
-    redirect(getDefaultDashboardPath(session.activeRole));
+    redirect(getDefaultDashboardPath(session));
   }
   return session;
 }

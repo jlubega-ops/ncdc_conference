@@ -79,6 +79,22 @@ export function registrationWelcomeEmail({ name, email, password, conferenceTitl
   };
 }
 
+export function registrationReceivedEmail({ name, conferenceTitle }) {
+  const appUrl = getAppUrl();
+  return {
+    subject: `Application received — ${conferenceTitle}`,
+    html: wrapEmailTemplate({
+      title: "Registration received",
+      bodyHtml: `
+        <p>Hello ${name},</p>
+        <p>Thank you for registering for <strong>${conferenceTitle}</strong>.</p>
+        <p>Your application is <strong>pending approval</strong>. You will receive an access code by email once an administrator approves your registration.</p>
+      `,
+      cta: { label: "Browse conferences", href: `${appUrl}/conferences` },
+    }),
+  };
+}
+
 export function registrationExistingAccountEmail({ name, conferenceTitle }) {
   const appUrl = getAppUrl();
   return {
@@ -87,10 +103,10 @@ export function registrationExistingAccountEmail({ name, conferenceTitle }) {
       title: "Conference application submitted",
       bodyHtml: `
         <p>Hello ${name},</p>
-        <p>We received your application for <strong>${conferenceTitle}</strong> using your existing account (<strong>pending approval</strong>).</p>
-        <p>Please sign in to track your application status on your dashboard.</p>
+        <p>We received your application for <strong>${conferenceTitle}</strong> (pending approval).</p>
+        <p>You will receive an access code by email once an administrator approves your registration. You can register for multiple conferences with the same email.</p>
       `,
-      cta: { label: "Sign in", href: `${appUrl}/login` },
+      cta: { label: "Browse conferences", href: `${appUrl}/conferences` },
     }),
   };
 }
@@ -107,12 +123,10 @@ export function registrationApprovedEmail({ name, conferenceTitle, notes, confer
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Your registration for <strong>${conferenceTitle}</strong> has been <strong>approved</strong>.</p>
-        <p>You can now access the conference programme and online resources on the conference page.</p>
+        <p>An access code has been sent in a separate email (or below if combined). Use <strong>Attendee access</strong> on the sign-in page.</p>
         ${notesBlock}
       `,
-      cta: conferenceSlug
-        ? { label: "View conference", href: `${appUrl}/conferences/${conferenceSlug}` }
-        : { label: "My registrations", href: `${appUrl}/dashboard/my-registrations` },
+      cta: { label: "Sign in with access code", href: `${appUrl}/login?mode=access` },
     }),
   };
 }

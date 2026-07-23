@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { savePrivateUpload } from "@/lib/storage/secure-files";
 import { validateRegistrationForm } from "@/lib/registration/validation";
-import { generateTemporaryPassword } from "@/lib/auth/credentials";
 import {
   findExistingRegistration,
   getConferenceForRegistration,
@@ -9,6 +8,8 @@ import {
   registrationConflictResponse,
 } from "@/lib/registration/service";
 import { mergeRegistrationWithProfile } from "@/lib/users/profile";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -132,37 +133,45 @@ export async function POST(request, { params }) {
       }
     }
 
-    const isNewUser = !user;
-    const tempPassword = isNewUser ? generateTemporaryPassword() : null;
-
     const result = await registerUserForConference({
       conference,
       conferenceId: raw.id,
       values: finalValues,
       paymentProofFileId,
-      isNewUser,
-      tempPassword,
+    });
+
+    await logActivity({
+      request,
+      action: ACTIVITY_ACTIONS.REGISTRATION_CREATE,
+      description: `Registered for ${conference.title} (${result.status})`,
+      resourceType: "registration",
+      resourceId: result.user.id,
+      conferenceId: raw.id,
+      actorEmail: finalValues.email,
+      metadata: { status: result.status, isNewUser: result.isNewUser },
     });
 
     const emailNote = result.emailSent
       ? ""
-      : " We could not send the notification email — contact the organisers if you need sign-in help.";
+      : " We could not send the notification email — contact the organisers if you need help.";
 
-    if (isNewUser) {
+    if (result.status === "CONFIRMED") {
       return NextResponse.json({
         ok: true,
-        isNewUser: true,
+        isNewUser: result.isNewUser,
         emailSent: result.emailSent,
-        message: `Registration received for ${conference.title}. Check your email for sign-in details. Your application is pending approval.${emailNote}`,
+        status: "CONFIRMED",
+        redirect: "/login?mode=access",
+        message: `You are registered for ${conference.title}. Check your email for your access code, then sign in under Attendee access.${emailNote}`,
       });
     }
 
     return NextResponse.json({
       ok: true,
-      isNewUser: false,
+      isNewUser: result.isNewUser,
       emailSent: result.emailSent,
-      redirect: "/login",
-      message: `Application received for ${conference.title}. Sign in with your existing account to track your status.${emailNote}`,
+      status: "PENDING",
+      message: `Registration received for ${conference.title}. You will receive an access code by email once an administrator approves your application.${emailNote}`,
     });
   } catch (err) {
     console.error("Conference registration error:", err);

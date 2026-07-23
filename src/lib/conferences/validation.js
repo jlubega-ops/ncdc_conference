@@ -11,15 +11,31 @@ export function validateConferenceForPublish(form) {
   if (!form.title?.trim()) errors.title = "Title is required.";
   if (!form.description?.trim()) errors.description = "Description is required.";
   if (!form.category?.trim()) errors.category = "Category is required.";
+  if (!form.organiserName?.trim()) {
+    errors.organiserName = "Organisation / organiser name is required.";
+  }
+  {
+    const shortRaw = String(form.organiserShortName ?? "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (shortRaw.length < 2) {
+      errors.organiserShortName = "Organisation short name is required (2+ letters/numbers).";
+    }
+  }
 
   if (!form.location?.trim()) errors.location = "Location is required.";
   if (!form.venue?.trim()) errors.venue = "Venue is required.";
   if (!form.timezone?.trim()) errors.timezone = "Timezone is required.";
-  if (!form.registrationOpenAt) {
-    errors.registrationOpenAt = "Registration open date is required.";
-  }
-  if (!form.registrationCloseAt) {
-    errors.registrationCloseAt = "Registration close date is required.";
+  const needsRegistrationWindow = !["OPEN_NO_REGISTRATION", "ADMIN_UPLOAD"].includes(
+    form.registrationMode,
+  );
+  if (needsRegistrationWindow) {
+    if (!form.registrationOpenAt) {
+      errors.registrationOpenAt = "Registration open date is required.";
+    }
+    if (!form.registrationCloseAt) {
+      errors.registrationCloseAt = "Registration close date is required.";
+    }
   }
 
   const days = Array.isArray(form.conferenceDays) ? form.conferenceDays : [];
@@ -36,10 +52,15 @@ export function validateConferenceForPublish(form) {
     });
   }
 
-  const cfpOpenAt = form.cfpOpenAt || null;
-  const cfpCloseAt = form.cfpCloseAt || null;
+  const allowPapers = Boolean(form.allowPaperSubmissions);
+  const cfpOpenAt = allowPapers ? form.cfpOpenAt || null : null;
+  const cfpCloseAt = allowPapers ? form.cfpCloseAt || null : null;
   const regOpenAt = form.registrationOpenAt || null;
   const regCloseAt = form.registrationCloseAt || null;
+  if (allowPapers) {
+    if (!cfpOpenAt) errors.cfpOpenAt = "CFP open date is required when papers are allowed.";
+    if (!cfpCloseAt) errors.cfpCloseAt = "CFP close date is required when papers are allowed.";
+  }
   if (cfpOpenAt && cfpCloseAt && cfpOpenAt > cfpCloseAt) {
     errors.cfpCloseAt = "CFP close date must be after open date.";
   }

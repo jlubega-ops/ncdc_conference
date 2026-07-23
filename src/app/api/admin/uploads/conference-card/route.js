@@ -4,6 +4,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { requireConferenceManager } from "@/lib/auth/guards";
+import { logActivity } from "@/lib/activity-log/service";
+import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export const runtime = "nodejs";
 
@@ -53,8 +55,18 @@ export async function POST(request) {
     const filePath = path.join(uploadDir, filename);
     await writeFile(filePath, compressed);
 
+    const url = `/uploads/conference-card-images/${filename}`;
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.UPLOAD_CARD_IMAGE,
+      description: "Uploaded conference card image",
+      resourceType: "upload",
+      metadata: { url },
+    });
+
     return NextResponse.json({
-      url: `/uploads/conference-card-images/${filename}`,
+      url,
       message: "Card image uploaded successfully.",
     });
   } catch (error) {

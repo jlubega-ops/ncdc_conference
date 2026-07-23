@@ -238,6 +238,14 @@ export async function checkInAttendance(userId, slug) {
     dayIndex: detail.today.dayIndex,
   });
 
+  // When certificate becomes available, email the PDF to the registered address.
+  try {
+    const { issueCertificateForUser } = await import("@/lib/certificates/service");
+    await issueCertificateForUser(userId, slug, { sendEmail: true });
+  } catch {
+    /* not eligible yet — ignore */
+  }
+
   return getAttendanceConferenceDetail(userId, slug);
 }
 

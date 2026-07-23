@@ -1,24 +1,28 @@
 export const metadata = {
-  title: "About | NCDC Conference Platform",
-  description:
-    "Learn about the NCDC Conference Management Platform and the National Curriculum Development Centre.",
+  title: "About | Conference Management",
+  description: "Learn about the Conference Management platform.",
 };
 
 const faqs = [
   {
-    question: "What is the NCDC Conference Management Platform?",
+    question: "What is Conference Management?",
     answer:
-      "It is a centralized platform for discovering conferences, submitting research papers, registering for events, and accessing conference materials hosted by the National Curriculum Development Centre, Uganda.",
+      "It is a centralized platform for discovering conferences, registering for events, submitting papers, tracking attendance, and accessing conference materials.",
   },
   {
     question: "Who can use this platform?",
     answer:
-      "Researchers, educators, conference attendees, and event organizers can all use the platform for their respective roles in the conference lifecycle.",
+      "Attendees, researchers, reviewers, and conference administrators can use the platform for their roles across the conference lifecycle.",
   },
   {
-    question: "How do I submit a research paper?",
+    question: "How do I find a conference?",
     answer:
-      "Visit the Call for Papers page to find open submission opportunities, review the guidelines, and submit through the conference's submission portal.",
+      "Browse the conferences list, or enter a conference code on the home page if organisers provided one with your invitation.",
+  },
+  {
+    question: "How do I sign in?",
+    answer:
+      "Use the Sign in link on the home page or header. Attendees typically receive login details after registration; administrators use their staff account.",
   },
 ];
 
@@ -27,41 +31,34 @@ export default function AboutPage() {
     <div className="bg-background">
       <div className="border-b border-border bg-surface">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-          <h1 className="text-3xl font-bold text-foreground">About NCDC</h1>
+          <h1 className="text-3xl font-bold text-foreground">About</h1>
           <p className="mt-3 max-w-2xl text-muted-foreground">
-            The National Curriculum Development Centre (NCDC) is Uganda&apos;s
-            lead agency for curriculum design, development, and review.
+            Conference Management helps organisers run events and helps participants discover,
+            register, and stay engaged throughout the conference.
           </p>
         </div>
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <section className="max-w-3xl">
-          <h2 className="text-lg font-semibold text-foreground">
-            Conference Management Platform
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">The platform</h2>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            This platform serves as a conference hub for all NCDC-hosted events.
-            Rather than separate websites for each conference, users can discover
-            events, submit papers, register, and download resources from a single
-            entry point — making it easier for researchers and educators across
-            Uganda and the region to participate.
+            Instead of separate sites for every event, this platform provides a single place to
+            browse conferences, register, submit papers, mark attendance, download materials, and
+            receive certificates when eligible. Organisers manage programmes, registrations, and
+            content from one dashboard.
           </p>
         </section>
 
         <section id="faqs" className="mt-12 scroll-mt-24">
-          <h2 className="text-lg font-semibold text-foreground">
-            Frequently Asked Questions
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">Frequently asked questions</h2>
           <dl className="mt-6 space-y-4">
             {faqs.map((faq) => (
               <div
                 key={faq.question}
                 className="rounded-lg border border-border bg-surface p-5"
               >
-                <dt className="text-sm font-semibold text-foreground">
-                  {faq.question}
-                </dt>
+                <dt className="text-sm font-semibold text-foreground">{faq.question}</dt>
                 <dd className="mt-2 text-sm text-muted-foreground">{faq.answer}</dd>
               </div>
             ))}

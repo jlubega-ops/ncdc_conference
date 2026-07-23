@@ -6,7 +6,11 @@ import {
 } from "lucide-react";
 import { Icon } from "@/components/ui/Icon";
 import { ConferenceImage } from "@/components/ConferenceImage";
-import { PAID_VISIBILITY_OPTIONS, SPEAKER_TYPE_LABELS } from "@/lib/conferences/constants";
+import {
+  PAID_VISIBILITY_OPTIONS,
+  REGISTRATION_MODE_LABELS,
+  SPEAKER_TYPE_LABELS,
+} from "@/lib/conferences/constants";
 import { normalizePaidContentVisibility } from "@/lib/conferences/visibility";
 import {
   formatAdminDateOnly,
@@ -38,12 +42,32 @@ function DetailBlock({ label, value, icon }) {
  * @param {{ conference: any }} props
  */
 export function ConferenceAdminInfoTab({ conference }) {
+  const mode = conference.registrationMode || "MANUAL_APPROVE";
+  const modeLabel = REGISTRATION_MODE_LABELS[mode] ?? mode;
+  const isInviteOnly = mode === "ADMIN_UPLOAD";
+
   return (
     <div>
       <div className="grid gap-6 sm:grid-cols-2">
         <DetailBlock label="Category" value={conference.category} />
         <DetailBlock label="Main theme" value={conference.theme} />
         <DetailBlock label="Slug" value={conference.slug} />
+        <DetailBlock label="Organisation" value={conference.organiserName} />
+        <DetailBlock label="Org short name" value={conference.organiserShortName} />
+        <DetailBlock
+          label="Paper submissions"
+          value={conference.allowPaperSubmissions ? "Enabled" : "Disabled"}
+        />
+        <DetailBlock label="Reference" value={conference.reference} />
+        <DetailBlock label="Registration mode" value={modeLabel} />
+        <DetailBlock
+          label="Public listing"
+          value={
+            isInviteOnly
+              ? "Hidden — invite-only (access code)"
+              : "Listed on public conferences page"
+          }
+        />
         <DetailBlock label="Date range" value={conference.dateRange || "Dates pending"} />
         <DetailBlock label="Timezone" value={conference.timezone} />
         <DetailBlock label="Location" value={conference.location} icon={MapPin} />
@@ -54,13 +78,24 @@ export function ConferenceAdminInfoTab({ conference }) {
           icon={Calendar}
         />
         <DetailBlock
-          label="Registration"
-          value={`${formatDate(conference.registrationOpenAt)} → ${formatDate(conference.registrationCloseAt)}`}
+          label="Registration window"
+          value={
+            isInviteOnly
+              ? "Not applicable (admin upload)"
+              : `${formatDate(conference.registrationOpenAt)} → ${formatDate(conference.registrationCloseAt)}`
+          }
           icon={Calendar}
         />
         <DetailBlock label="Featured" value={conference.featured ? "Yes" : "No"} />
         <DetailBlock label="Last updated" value={formatDate(conference.updatedAt)} icon={Clock} />
       </div>
+
+      {isInviteOnly ? (
+        <p className="mt-4 rounded-md border border-border bg-neutral-50 px-3 py-2 text-xs text-muted-foreground">
+          This conference is invite-only. It does not appear in public search or the conferences
+          list. Attendees open it with an access code after you upload their details.
+        </p>
+      ) : null}
 
       {conference.description ? (
         <div className="mt-6 border-t border-border pt-6">

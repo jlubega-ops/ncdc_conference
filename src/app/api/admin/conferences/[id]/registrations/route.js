@@ -10,13 +10,27 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rows = await prisma.conferenceRegistration.findMany({
-    where: { conferenceId: id },
-    include: { user: { select: userSelect } },
-    orderBy: { registeredAt: "desc" },
-  });
+  const [rows, accessKeys] = await Promise.all([
+    prisma.conferenceRegistration.findMany({
+      where: { conferenceId: id },
+      include: { user: { select: userSelect } },
+      orderBy: { registeredAt: "desc" },
+    }),
+    prisma.conferenceAccessKey.findMany({
+      where: { conferenceId: id, revokedAt: null },
+      select: { email: true, userId: true },
+    }),
+  ]);
+
+  const keyEmails = new Set(accessKeys.map((k) => k.email.toLowerCase()));
+  const keyUserIds = new Set(accessKeys.map((k) => k.userId).filter(Boolean));
 
   return NextResponse.json({
-    registrations: rows.map(mapRegistrationForAdmin),
+    registrations: rows.map((row) => {
+      const email = row.user?.email?.toLowerCase();
+      const hasAccessKey =
+        (email && keyEmails.has(email)) || (row.userId && keyUserIds.has(row.userId));
+      return mapRegistrationForAdmin(row, { hasAccessKey: Boolean(hasAccessKey) });
+    }),
   });
 }

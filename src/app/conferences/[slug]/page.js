@@ -1,20 +1,25 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { ConferenceDetailHero } from "@/components/conference/ConferenceDetailHero";
 import { ConferenceTabs } from "@/components/conference/ConferenceTabs";
-import { getSessionRecord } from "@/lib/auth/session";
+import { canManageConference } from "@/lib/auth/conference-access";
+import { getCurrentSession } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
 import {
   getPublishedConferenceBySlug,
   getPublishedConferences,
+  isInviteOnlyConference,
 } from "@/lib/conferences/service";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const conference = await getPublishedConferenceBySlug(slug);
   if (!conference) return { title: "Conference Not Found" };
+  if (isInviteOnlyConference(conference)) {
+    return { title: "Conference | Conference Management", robots: { index: false, follow: false } };
+  }
   return {
-    title: `${conference.title} | NCDC Conference`,
+    title: `${conference.title} | Conference Management`,
     description: conference.shortDescription,
   };
 }
@@ -29,9 +34,10 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
   let registrationStatus = null;
   let registration = null;
   let isAuthenticated = false;
+  let session = null;
 
   try {
-    const session = await getSessionRecord();
+    session = await getCurrentSession();
     if (session?.user?.id) {
       isAuthenticated = true;
       const reg = await getUserConferenceRegistration(session.user.id, conference.id);
@@ -46,6 +52,17 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
     }
   } catch {
     /* ignore */
+  }
+
+  if (isInviteOnlyConference(conference)) {
+    const isManager = session ? canManageConference(session, conference.id) : false;
+    const hasAccess = registrationStatus === "CONFIRMED" || isManager;
+    if (!hasAccess) {
+      if (!isAuthenticated) {
+        redirect(`/login?mode=access&redirect=${encodeURIComponent(`/conferences/${slug}`)}`);
+      }
+      notFound();
+    }
   }
 
   const initialTab = typeof query?.tab === "string" ? query.tab : null;

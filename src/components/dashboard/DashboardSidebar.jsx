@@ -19,6 +19,7 @@ import {
   BookOpen,
   UserCheck,
   Award,
+  ScrollText,
   X,
 } from "lucide-react";
 import { Icon } from "@/components/ui/Icon";
@@ -45,6 +46,7 @@ const ICON_MAP = {
   BookOpen,
   UserCheck,
   Award,
+  ScrollText,
 };
 
 /**

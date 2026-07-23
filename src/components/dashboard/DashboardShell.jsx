@@ -1,17 +1,40 @@
 "use client";
 
 import { useState } from "react";
-import { Menu } from "lucide-react";
+import { ArrowLeft, LogOut, Menu } from "lucide-react";
 import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/Button";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { useSession } from "@/components/auth/SessionProvider";
+import { getActiveConferenceSlug } from "@/lib/auth/dashboard-routes";
 
 export function DashboardShell({ children }) {
-  const { session } = useSession();
+  const { session, logout } = useSession();
   const [mobileNav, setMobileNav] = useState(false);
 
   if (!session) {
     return <div className="flex-1">{children}</div>;
+  }
+
+  if (session.activeRole === "ATTENDEE") {
+    const slug = getActiveConferenceSlug(session);
+    const conferenceHref = slug ? `/conferences/${slug}` : "/login?mode=access";
+
+    return (
+      <div className="flex flex-1 flex-col">
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+          <Button variant="ghost" size="sm" icon={ArrowLeft} href={conferenceHref}>
+            Back to my conference
+          </Button>
+          <Button variant="outline" size="sm" icon={LogOut} onClick={logout}>
+            Logout
+          </Button>
+        </div>
+        <div className="min-w-0 flex-1 overflow-y-auto bg-background">
+          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
+        </div>
+      </div>
+    );
   }
 
   return (
