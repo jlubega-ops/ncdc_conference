@@ -9,8 +9,6 @@ import { slugify } from "@/lib/conferences/utils";
 import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
-import { logActivity } from "@/lib/activity-log/service";
-import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 /**
  * @param {any} input
