@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSessionRecord, switchActiveRole } from "@/lib/auth/session";
+import {
+  getSessionRecord,
+  getSessionTokenFromCookie,
+  setSessionCookie,
+  switchActiveRole,
+} from "@/lib/auth/session";
 import { ROLE_HIERARCHY } from "@/lib/auth/roles";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
@@ -26,7 +31,13 @@ export async function POST(request) {
       resourceId: record.userId,
       metadata: { role },
     });
-    return NextResponse.json({ ok: true, session });
+
+    const response = NextResponse.json({ ok: true, session });
+    const token = await getSessionTokenFromCookie();
+    if (token && session?.activeRole) {
+      await setSessionCookie(response, token, session.activeRole);
+    }
+    return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Switch failed";
     return NextResponse.json({ error: message }, { status: 400 });

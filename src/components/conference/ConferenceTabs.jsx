@@ -20,7 +20,6 @@ import { canViewConferenceContent } from "@/lib/conferences/visibility";
 import { normalizeConferenceDays, getZonedDateTimeParts } from "@/lib/attendance/utils";
 import {
   ConferenceMemberMaterials,
-  ConferenceMemberPresentations,
 } from "@/components/conference/ConferenceMemberContent";
 import { ConferenceAttendanceTab } from "@/components/conference/ConferenceAttendanceTab";
 import { ConferenceFeedbackTab } from "@/components/conference/ConferenceFeedbackTab";
@@ -33,7 +32,6 @@ const tabs = [
   { id: "attendance", label: "Attendance & certificates" },
   { id: "feedback", label: "Feedback" },
   { id: "materials", label: "Materials" },
-  { id: "presentations", label: "Presentations" },
   { id: "faqs", label: "FAQs" },
 ];
 
@@ -560,15 +558,13 @@ function RegistrationTab({ conference, registrationStatus, registration, isAuthe
   );
 }
 
-function MaterialsTab({ slug, registrationStatus }) {
+function MaterialsTab({ slug, registrationStatus, canAccessContent }) {
   return (
-    <ConferenceMemberMaterials slug={slug} registrationStatus={registrationStatus} />
-  );
-}
-
-function PresentationsTab({ slug, registrationStatus }) {
-  return (
-    <ConferenceMemberPresentations slug={slug} registrationStatus={registrationStatus} />
+    <ConferenceMemberMaterials
+      slug={slug}
+      registrationStatus={registrationStatus}
+      canAccessContent={canAccessContent}
+    />
   );
 }
 
@@ -595,11 +591,12 @@ function FaqsTab({ conference }) {
   );
 }
 
-function getVisibleTabs(conference, isAuthenticated, registrationStatus) {
+function getVisibleTabs(conference, isAuthenticated, registrationStatus, memberContent) {
   const programmeDays = normalizeProgrammeForDisplay(conference.programme);
   const hasSpeakers =
     Array.isArray(conference.speakers) && conference.speakers.length > 0;
   const approved = isAuthenticated && registrationStatus === "CONFIRMED";
+  const hasMemberMaterials = Boolean(memberContent?.hasAny);
 
   return tabs.filter((tab) => {
     switch (tab.id) {
@@ -616,8 +613,8 @@ function getVisibleTabs(conference, isAuthenticated, registrationStatus) {
       case "feedback":
         return approved && haveConferenceDaysStarted(conference);
       case "materials":
-      case "presentations":
-        return isAuthenticated;
+        // Only show when authenticated and at least one materials category has content.
+        return isAuthenticated && hasMemberMaterials;
       default:
         return true;
     }
@@ -632,6 +629,14 @@ function getVisibleTabs(conference, isAuthenticated, registrationStatus) {
  *   isAuthenticated?: boolean;
  *   initialTab?: string | null;
  *   myPapersHref?: string;
+ *   memberContent?: {
+ *     materials?: number;
+ *     paperTemplates?: number;
+ *     presentationTemplates?: number;
+ *     presentations?: number;
+ *     hasAny?: boolean;
+ *   } | null;
+ *   canAccessMemberContent?: boolean;
  * }} props
  */
 export function ConferenceTabs({
@@ -641,10 +646,19 @@ export function ConferenceTabs({
   isAuthenticated = false,
   initialTab = null,
   myPapersHref = null,
+  memberContent = null,
+  canAccessMemberContent = false,
 }) {
   const searchParams = useSearchParams();
-  const tabFromUrl = searchParams.get("tab") || initialTab;
-  const visibleTabs = getVisibleTabs(conference, isAuthenticated, registrationStatus);
+  const rawTab = searchParams.get("tab") || initialTab;
+  // Legacy ?tab=presentations opens the unified Materials hub.
+  const tabFromUrl = rawTab === "presentations" ? "materials" : rawTab;
+  const visibleTabs = getVisibleTabs(
+    conference,
+    isAuthenticated,
+    registrationStatus,
+    memberContent,
+  );
   const [activeTab, setActiveTab] = useState(
     tabFromUrl && visibleTabs.some((t) => t.id === tabFromUrl)
       ? tabFromUrl
@@ -653,8 +667,9 @@ export function ConferenceTabs({
 
   useEffect(() => {
     const t = searchParams.get("tab");
-    if (t && visibleTabs.some((tab) => tab.id === t)) {
-      setActiveTab(t);
+    const normalized = t === "presentations" ? "materials" : t;
+    if (normalized && visibleTabs.some((tab) => tab.id === normalized)) {
+      setActiveTab(normalized);
     }
   }, [searchParams, visibleTabs]);
 
@@ -715,10 +730,11 @@ export function ConferenceTabs({
         ) : null}
         {activeTab === "feedback" ? <ConferenceFeedbackTab conference={conference} /> : null}
         {activeTab === "materials" ? (
-          <MaterialsTab slug={conference.slug} registrationStatus={registrationStatus} />
-        ) : null}
-        {activeTab === "presentations" ? (
-          <PresentationsTab slug={conference.slug} registrationStatus={registrationStatus} />
+          <MaterialsTab
+            slug={conference.slug}
+            registrationStatus={registrationStatus}
+            canAccessContent={canAccessMemberContent || registrationStatus === "CONFIRMED"}
+          />
         ) : null}
         {activeTab === "faqs" ? <FaqsTab conference={conference} /> : null}
       </div>

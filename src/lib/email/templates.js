@@ -12,7 +12,7 @@ const brand = {
  */
 export function wrapEmailTemplate({ title, preheader, bodyHtml, cta }) {
   const appUrl = getAppUrl();
-  const logoUrl = `${appUrl}/assets/ncdc_logo.jpg`;
+  const logoUrl = `${appUrl}/assets/logo.png`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -166,21 +166,23 @@ export function passwordResetEmail({ name, resetUrl }) {
 
 export function accountWelcomeEmail({ name, email, password }) {
   const appUrl = getAppUrl();
+  const loginUrl = `${appUrl}/login?mode=staff`;
   return {
-    subject: "Your NCDC Conference account",
+    subject: "Your conference platform account",
     html: wrapEmailTemplate({
       title: "Account created",
       preheader: "Sign in and set your password",
       bodyHtml: `
         <p>Hello ${name},</p>
-        <p>An administrator created an account for you on the NCDC Conference Platform.</p>
+        <p>An administrator created an account for you on the Conference Platform.</p>
         <p>Use the credentials below to sign in. You will be asked to change your password on first login.</p>
         <table style="margin:20px 0;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;width:100%;">
           <tr><td style="padding:12px 16px;"><strong>Email (username):</strong><br/>${email}</td></tr>
           <tr><td style="padding:12px 16px;border-top:1px solid #e5e7eb;"><strong>Temporary password:</strong><br/><code style="font-size:16px;letter-spacing:1px;">${password}</code></td></tr>
+          <tr><td style="padding:12px 16px;border-top:1px solid #e5e7eb;"><strong>System login:</strong><br/><a href="${loginUrl}" style="color:#008e51;word-break:break-all;">${loginUrl}</a></td></tr>
         </table>
       `,
-      cta: { label: "Sign in", href: `${appUrl}/login` },
+      cta: { label: "Sign in to the system", href: loginUrl },
     }),
   };
 }

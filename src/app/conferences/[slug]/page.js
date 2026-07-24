@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { ConferenceDetailHero } from "@/components/conference/ConferenceDetailHero";
 import { ConferenceTabs } from "@/components/conference/ConferenceTabs";
 import { canManageConference } from "@/lib/auth/conference-access";
+import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
 import {
@@ -10,6 +11,7 @@ import {
   getPublishedConferences,
   isInviteOnlyConference,
 } from "@/lib/conferences/service";
+import { getMemberContentAvailability } from "@/lib/conference-content/service";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -54,6 +56,16 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
     /* ignore */
   }
 
+  // Logged-in users do not browse public conference pages.
+  // Confirmed attendees may open their conference hub; managers may preview theirs.
+  if (session) {
+    const isManager = canManageConference(session, conference.id);
+    const isConfirmedAttendee = registrationStatus === "CONFIRMED";
+    if (!isConfirmedAttendee && !isManager) {
+      redirect(getDefaultDashboardPath(session));
+    }
+  }
+
   if (isInviteOnlyConference(conference)) {
     const isManager = session ? canManageConference(session, conference.id) : false;
     const hasAccess = registrationStatus === "CONFIRMED" || isManager;
@@ -67,6 +79,19 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
 
   const initialTab = typeof query?.tab === "string" ? query.tab : null;
 
+  const isManager = session ? canManageConference(session, conference.id) : false;
+  const isConfirmedAttendee = registrationStatus === "CONFIRMED";
+  const canAccessMemberContent = Boolean(isManager || isConfirmedAttendee);
+
+  let memberContent = null;
+  if (canAccessMemberContent) {
+    try {
+      memberContent = await getMemberContentAvailability(conference.id);
+    } catch {
+      memberContent = null;
+    }
+  }
+
   return (
     <div className="bg-background">
       <ConferenceDetailHero conference={conference} />
@@ -79,6 +104,8 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
             registration={registration}
             isAuthenticated={isAuthenticated}
             initialTab={initialTab}
+            memberContent={memberContent}
+            canAccessMemberContent={canAccessMemberContent}
           />
         </Suspense>
       </div>

@@ -415,13 +415,14 @@ export function ConferenceAdminRegistrationsTab({
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Access code</th>
                 <th className="px-4 py-3">Registered</th>
+                <th className="px-4 py-3">Last access</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border bg-background">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-foreground/80">
+                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-foreground/80">
                     No registrations match your filters.
                   </td>
                 </tr>
@@ -494,6 +495,12 @@ export function ConferenceAdminRegistrationsTab({
                       onClick={() => openRow(row)}
                     >
                       {formatAdminDate(row.registeredAt)}
+                    </td>
+                    <td
+                      className="cursor-pointer px-4 py-3 text-foreground/80"
+                      onClick={() => openRow(row)}
+                    >
+                      {row.lastAccessAt ? formatAdminDate(row.lastAccessAt) : "Never"}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-nowrap items-center gap-1">
@@ -787,10 +794,23 @@ export function ConferenceAdminRegistrationsTab({
         title="Delete registration"
       >
         <div className="space-y-4">
-          <p className="text-sm text-foreground/80">
-            This removes <strong>{deleteTarget?.displayName || deleteTarget?.user?.email}</strong>{" "}
-            from this conference (registration, attendance, feedback, and access code). Type{" "}
-            <strong>DELETE</strong> to confirm.
+          <div className="rounded-md border border-error/30 bg-error/10 px-3 py-3 text-sm text-foreground">
+            <p className="font-semibold text-error">This cannot be undone.</p>
+            <p className="mt-2 text-foreground/90">
+              Removing{" "}
+              <span className="font-semibold">
+                {deleteTarget?.displayName || deleteTarget?.user?.email}
+              </span>{" "}
+              deletes their registration for this conference plus attendance, feedback,
+              certificates, papers, gifts, and access codes for this conference only.
+            </p>
+            <p className="mt-2 text-foreground/90">
+              If they belong <span className="font-semibold">only</span> to this conference and
+              are not staff, their entire user account will also be deleted.
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Type <strong className="text-foreground">DELETE</strong> to confirm.
           </p>
           <Input
             label="Confirmation"

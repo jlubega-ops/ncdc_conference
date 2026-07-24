@@ -9,7 +9,7 @@ export const metadata = {
 export default async function ChangePasswordPage() {
   const session = await requireSession();
   if (!session) {
-    redirect("/login?redirect=/dashboard/change-password");
+    redirect("/login?redirect=/dashboard/change-password&reason=session_expired");
   }
 
   return (

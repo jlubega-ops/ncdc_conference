@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { savePrivateUpload } from "@/lib/storage/secure-files";
 import { normalizeSpeaker } from "@/lib/conferences/utils";
+import { normalizeConferenceDays } from "@/lib/attendance/utils";
 import { ALLOWED_RESOURCE_MIME, MAX_RESOURCE_BYTES, RESOURCE_TYPES } from "./constants";
+import { formatPresentationDayLabel } from "./presentation-days";
 
 /**
  * @param {any} row
@@ -22,20 +24,27 @@ function mapResource(row) {
 
 /**
  * @param {any} row
+ * @param {Array<{ date: string; dayIndex: number }>} [days]
  */
-function mapPresentation(row) {
+function mapPresentation(row, days = []) {
+  const sessionLabel = row.sessionLabel ? String(row.sessionLabel).trim() : null;
+  const day = days.find((d) => d.date === sessionLabel) || null;
   return {
     id: row.id,
     title: row.title,
     speakerName: row.speakerName,
     speakerTitle: row.speakerTitle,
-    sessionLabel: row.sessionLabel,
+    sessionLabel,
     description: row.description,
     fileId: row.fileId,
     fileName: row.fileName,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt,
     downloadUrl: row.fileId ? `/api/files/conference-resources/${row.fileId}` : null,
+    dayIndex: day?.dayIndex ?? null,
+    dayLabel: day
+      ? formatPresentationDayLabel(day.date, day.dayIndex)
+      : sessionLabel || "Unassigned",
   };
 }
 
@@ -55,11 +64,66 @@ export async function listConferenceResources(conferenceId, type) {
  * @param {string} conferenceId
  */
 export async function listConferencePresentations(conferenceId) {
-  const rows = await prisma.conferencePresentation.findMany({
-    where: { conferenceId },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  const [rows, conference] = await Promise.all([
+    prisma.conferencePresentation.findMany({
+      where: { conferenceId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.conference.findUnique({
+      where: { id: conferenceId },
+      select: { conferenceDays: true },
+    }),
+  ]);
+  const days = normalizeConferenceDays(conference?.conferenceDays);
+  return rows.map((row) => mapPresentation(row, days));
+}
+
+/**
+ * Conference days for presentation day dropdowns.
+ * @param {string} conferenceId
+ */
+export async function getConferenceDaysForPresentations(conferenceId) {
+  const conference = await prisma.conference.findUnique({
+    where: { id: conferenceId },
+    select: { conferenceDays: true },
   });
-  return rows.map(mapPresentation);
+  return normalizeConferenceDays(conference?.conferenceDays).map((d) => ({
+    date: d.date,
+    dayIndex: d.dayIndex,
+    label: formatPresentationDayLabel(d.date, d.dayIndex),
+  }));
+}
+
+/**
+ * Lightweight counts so attendee tabs can hide empty material categories.
+ * @param {string} conferenceId
+ */
+export async function getMemberContentAvailability(conferenceId) {
+  const [materials, paperTemplates, presentationTemplates, presentations] =
+    await Promise.all([
+      prisma.conferenceResource.count({
+        where: { conferenceId, type: RESOURCE_TYPES.MATERIAL },
+      }),
+      prisma.conferenceResource.count({
+        where: { conferenceId, type: RESOURCE_TYPES.PAPER_TEMPLATE },
+      }),
+      prisma.conferenceResource.count({
+        where: { conferenceId, type: RESOURCE_TYPES.PRESENTATION_TEMPLATE },
+      }),
+      prisma.conferencePresentation.count({ where: { conferenceId } }),
+    ]);
+
+  return {
+    materials,
+    paperTemplates,
+    presentationTemplates,
+    presentations,
+    hasAny:
+      materials > 0 ||
+      paperTemplates > 0 ||
+      presentationTemplates > 0 ||
+      presentations > 0,
+  };
 }
 
 /**
@@ -128,12 +192,30 @@ export async function deleteConferenceResource(conferenceId, resourceId) {
 export async function createConferencePresentation(conferenceId, form) {
   const title = String(form.get("title") ?? "").trim();
   const speakerName = String(form.get("speakerName") ?? "").trim() || null;
-  const speakerTitle = String(form.get("speakerTitle") ?? "").trim() || null;
+  let speakerTitle = String(form.get("speakerTitle") ?? "").trim() || null;
   const sessionLabel = String(form.get("sessionLabel") ?? "").trim() || null;
   const description = String(form.get("description") ?? "").trim() || null;
   const file = form.get("file");
 
   if (!title) throw new Error("Title is required.");
+  if (!sessionLabel) throw new Error("Please select a conference day.");
+
+  const days = await getConferenceDaysForPresentations(conferenceId);
+  if (days.length === 0) {
+    throw new Error("Add conference days in the conference schedule before uploading presentations.");
+  }
+  if (!days.some((d) => d.date === sessionLabel)) {
+    throw new Error("Selected day is not part of this conference schedule.");
+  }
+
+  // If title not sent, pull it from a matching saved speaker profile.
+  if (speakerName && !speakerTitle) {
+    const speakers = await getConferenceSpeakers(conferenceId);
+    const match = speakers.find(
+      (s) => String(s.name || "").trim().toLowerCase() === speakerName.toLowerCase(),
+    );
+    if (match?.title) speakerTitle = String(match.title).trim() || null;
+  }
 
   let fileId = null;
   let fileName = null;
@@ -155,7 +237,7 @@ export async function createConferencePresentation(conferenceId, form) {
       fileName,
     },
   });
-  return mapPresentation(row);
+  return mapPresentation(row, days.map((d) => ({ date: d.date, dayIndex: d.dayIndex })));
 }
 
 /**

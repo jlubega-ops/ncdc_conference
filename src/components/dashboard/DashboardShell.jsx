@@ -13,7 +13,7 @@ export function DashboardShell({ children }) {
   const [mobileNav, setMobileNav] = useState(false);
 
   if (!session) {
-    return <div className="flex-1">{children}</div>;
+    return <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>;
   }
 
   if (session.activeRole === "ATTENDEE") {
@@ -21,8 +21,8 @@ export function DashboardShell({ children }) {
     const conferenceHref = slug ? `/conferences/${slug}` : "/login?mode=access";
 
     return (
-      <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
           <Button variant="ghost" size="sm" icon={ArrowLeft} href={conferenceHref}>
             Back to my conference
           </Button>
@@ -30,7 +30,7 @@ export function DashboardShell({ children }) {
             Logout
           </Button>
         </div>
-        <div className="min-w-0 flex-1 overflow-y-auto bg-background">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background">
           <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
         </div>
       </div>
@@ -38,8 +38,8 @@ export function DashboardShell({ children }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-1 flex-col overflow-hidden lg:flex-row">
-      <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-3 lg:hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-4 py-3 lg:hidden">
         <button
           type="button"
           onClick={() => setMobileNav(true)}
@@ -53,7 +53,7 @@ export function DashboardShell({ children }) {
 
       <DashboardSidebar mobileOpen={mobileNav} onClose={() => setMobileNav(false)} />
 
-      <div className="min-w-0 flex-1 overflow-y-auto bg-background">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
       </div>
     </div>

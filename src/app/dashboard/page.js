@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   }
 
   if (!session) {
-    redirect("/login");
+    redirect("/login?redirect=/dashboard&reason=session_expired");
   }
 
   // Attendees live entirely on their conference tabs — no dashboard overview.

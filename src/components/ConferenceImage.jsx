@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { cn } from "@/lib/cn";
-import { defaultConferenceImage } from "@/lib/assets";
+import { resolveConferenceImageSrc } from "@/lib/assets";
 
 /**
  * @param {object} props
@@ -19,7 +19,7 @@ export function ConferenceImage({
 }) {
   return (
     <Image
-      src={src || defaultConferenceImage}
+      src={resolveConferenceImageSrc(src)}
       alt={alt}
       fill
       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"

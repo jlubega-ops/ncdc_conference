@@ -35,7 +35,7 @@ export default async function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
+      <body className="flex min-h-full flex-col font-sans" suppressHydrationWarning>
         <SessionProvider initialSession={initialSession}>
           <SiteChrome>{children}</SiteChrome>
           <ToastProvider />

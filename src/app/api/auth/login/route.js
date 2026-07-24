@@ -92,7 +92,7 @@ export async function POST(request) {
       redirect: "/dashboard",
       mustChangePassword: user.mustChangePassword,
     });
-    await setSessionCookie(response, token);
+    await setSessionCookie(response, token, activeRole);
     await logActivity({
       session: { user: { id: user.id, email: user.email, name: user.name }, activeRole },
       request,

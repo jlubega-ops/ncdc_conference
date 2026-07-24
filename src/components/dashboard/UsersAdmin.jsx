@@ -15,8 +15,10 @@ import { GENDER_OPTIONS } from "@/lib/registration/constants";
 import { formatAdminDate } from "@/components/dashboard/admin-tabs/AdminTabShell";
 import { AdminListFilters } from "@/components/dashboard/admin-tabs/AdminListFilters";
 import { genderLabel } from "@/lib/users/profile";
+import { ADMIN_FORM_ROLES } from "@/lib/users/validation";
 
-const ASSIGNABLE_ROLES = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER", "ATTENDEE"];
+const ASSIGNABLE_ROLES = ADMIN_FORM_ROLES;
+const FILTER_ROLES = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER", "ATTENDEE"];
 
 const EMPTY_FORM = {
   firstName: "",
@@ -38,10 +40,16 @@ function userToForm(user) {
     lastName: user.profile?.lastName ?? "",
     email: user.email ?? "",
     gender: user.profile?.gender ?? "",
-    roles: [...new Set(user.roles.map((r) => r.role))],
+    roles: [
+      ...new Set(
+        user.roles.map((r) => r.role).filter((role) => ASSIGNABLE_ROLES.includes(role)),
+      ),
+    ],
     conferenceIds: [
       ...new Set(
-        user.roles.filter((r) => r.conferenceId).map((r) => r.conferenceId),
+        user.roles
+          .filter((r) => r.role === "CONFERENCE_ADMIN" && r.conferenceId)
+          .map((r) => r.conferenceId),
       ),
     ],
   };
@@ -199,9 +207,7 @@ export function UsersAdmin() {
     });
   }
 
-  const needsConference = form.roles.some((r) =>
-    ["CONFERENCE_ADMIN", "REVIEWER"].includes(r),
-  );
+  const needsConference = form.roles.includes("CONFERENCE_ADMIN");
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -320,7 +326,7 @@ export function UsersAdmin() {
 
         <FormSection
           title="Roles"
-          description="Select one or more roles. Conference admin and reviewer require conference assignment."
+          description="Assign Super Admin and/or Conference Admin. Attendee and Reviewer roles are added when a person registers or is assigned to a conference."
         >
           <div className="flex flex-wrap gap-2">
             {ASSIGNABLE_ROLES.map((role) => (
@@ -347,7 +353,10 @@ export function UsersAdmin() {
         </FormSection>
 
         {needsConference ? (
-          <FormSection title="Conference assignment">
+          <FormSection
+            title="Conference assignment"
+            description="Required for Conference Admin. Without a conference, Conference Admin will not be assigned."
+          >
             <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-border p-3">
               {conferences.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No conferences available.</p>
@@ -372,8 +381,8 @@ export function UsersAdmin() {
 
         {!editingUser ? (
           <p className="text-xs text-muted-foreground">
-            The user receives an email with a temporary password and must change it on first
-            login.
+            The user receives an email with a temporary password and the system login link, and
+            must change the password on first login.
           </p>
         ) : editingUser.accountActivated ? (
           <p className="text-xs text-muted-foreground">
@@ -433,7 +442,7 @@ export function UsersAdmin() {
                 onChange: setRoleFilter,
                 allLabel: "All roles",
                 ariaLabel: "Filter by role",
-                options: ASSIGNABLE_ROLES.map((role) => ({
+                options: FILTER_ROLES.map((role) => ({
                   value: role,
                   label: ROLE_LABELS[role] ?? role,
                 })),
@@ -639,13 +648,13 @@ export function UsersAdmin() {
         open={Boolean(userToDelete)}
         onClose={() => !busy && setUserToDelete(null)}
         onConfirm={confirmDeleteUser}
-        title="Delete user?"
+        title="Delete user permanently?"
         message={
           userToDelete
-            ? `Permanently delete ${userToDelete.name} (${userToDelete.email})? Their registrations, papers, sessions, and role assignments will be removed. This cannot be undone.`
+            ? `This permanently deletes ${userToDelete.name} (${userToDelete.email}) and ALL related data: registrations, attendance, feedback, certificates, papers, access keys, gift records, sessions, and role assignments across every conference. This cannot be undone.`
             : ""
         }
-        confirmLabel="Delete user"
+        confirmLabel="Delete user and all data"
         variant="danger"
         loading={busy}
       />

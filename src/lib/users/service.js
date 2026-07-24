@@ -10,9 +10,11 @@ import {
   validateAdminUpdateUser,
   validateProfileUpdate,
 } from "@/lib/users/validation";
+import { deleteUserAndRelatedData } from "@/lib/users/orphan-attendee";
 
 /**
- * @param {object} input
+ * @param {string[]} roles
+ * @param {string[]} conferenceIds
  */
 function buildRoleCreates(roles, conferenceIds) {
   /** @type {Array<{ role: string; conferenceId: string | null }>} */
@@ -23,13 +25,10 @@ function buildRoleCreates(roles, conferenceIds) {
       creates.push({ role: "SUPERADMIN", conferenceId: null });
       continue;
     }
-    if (role === "ATTENDEE") {
-      creates.push({ role: "ATTENDEE", conferenceId: null });
-      continue;
-    }
-    if (role === "CONFERENCE_ADMIN" || role === "REVIEWER") {
+    if (role === "CONFERENCE_ADMIN") {
+      // Without conferences, skip — role is only assigned when a conference is selected.
       for (const conferenceId of conferenceIds) {
-        creates.push({ role, conferenceId });
+        creates.push({ role: "CONFERENCE_ADMIN", conferenceId });
       }
     }
   }
@@ -176,7 +175,13 @@ export async function updateUserByAdmin(userId, data) {
   const roleCreates = buildRoleCreates(values.roles, values.conferenceIds);
 
   const user = await prisma.$transaction(async (tx) => {
-    await tx.userRole.deleteMany({ where: { userId } });
+    // Keep attendee/reviewer roles (assigned via conferences); only replace admin form roles.
+    await tx.userRole.deleteMany({
+      where: {
+        userId,
+        role: { in: ["SUPERADMIN", "CONFERENCE_ADMIN"] },
+      },
+    });
     return tx.user.update({
       where: { id: userId },
       data: {
@@ -231,8 +236,12 @@ export async function deleteUserByAdmin(userId, actingUserId) {
     }
   }
 
-  await prisma.user.delete({ where: { id: userId } });
-  return { ok: true, message: "User deleted." };
+  await deleteUserAndRelatedData(userId);
+  return {
+    ok: true,
+    message:
+      "User deleted. All related data (registrations, attendance, feedback, certificates, papers, access keys, gifts, sessions, and roles) was removed.",
+  };
 }
 
 /**

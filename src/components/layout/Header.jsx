@@ -16,7 +16,7 @@ export function Header() {
   const navLinks = getHeaderNavLinks(session);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-surface">
+    <header className="sticky top-0 z-50 shrink-0 border-b border-border bg-surface">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="flex h-16 items-center justify-between gap-4">
           <Logo size="md" />

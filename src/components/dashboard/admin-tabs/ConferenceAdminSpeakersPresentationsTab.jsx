@@ -11,6 +11,20 @@ import { FormSection } from "@/components/forms/FormLayout";
 import { cn } from "@/lib/cn";
 import { SPEAKER_TYPE_LABELS } from "@/lib/conferences/constants";
 import { createSpeakerId } from "@/lib/conferences/utils";
+import {
+  formatPresentationSpeaker,
+  groupPresentationsByDay,
+} from "@/lib/conference-content/presentation-days";
+
+const emptyPresForm = {
+  title: "",
+  dayDate: "",
+  speakerId: "",
+  speakerName: "",
+  speakerTitle: "",
+  description: "",
+  file: null,
+};
 
 /**
  * @param {{ conferenceId: string; nested?: boolean }} props
@@ -18,19 +32,13 @@ import { createSpeakerId } from "@/lib/conferences/utils";
 export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested = false }) {
   const [speakers, setSpeakers] = useState([]);
   const [presentations, setPresentations] = useState([]);
+  const [conferenceDays, setConferenceDays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [openGroups, setOpenGroups] = useState({});
   const [presentationToRemove, setPresentationToRemove] = useState(null);
-  const [presForm, setPresForm] = useState({
-    title: "",
-    speakerName: "",
-    speakerTitle: "",
-    sessionLabel: "",
-    description: "",
-    file: null,
-  });
+  const [presForm, setPresForm] = useState(emptyPresForm);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,6 +53,7 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
       if (!prRes.ok) throw new Error(prData.error || "Could not load presentations.");
       setSpeakers(spData.speakers ?? []);
       setPresentations(prData.presentations ?? []);
+      setConferenceDays(prData.conferenceDays ?? []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load data.");
     } finally {
@@ -56,24 +65,25 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
     load();
   }, [load]);
 
+  const savedSpeakers = useMemo(
+    () => (speakers || []).filter((s) => String(s.name || "").trim()),
+    [speakers],
+  );
+
   const groupedPresentations = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = presentations.filter((p) => {
       if (!q) return true;
+      const speakerLine = formatPresentationSpeaker(p.speakerName, p.speakerTitle).toLowerCase();
       return (
         p.title?.toLowerCase().includes(q) ||
-        p.speakerName?.toLowerCase().includes(q) ||
+        speakerLine.includes(q) ||
+        p.dayLabel?.toLowerCase().includes(q) ||
         p.sessionLabel?.toLowerCase().includes(q)
       );
     });
-    const groups = new Map();
-    for (const p of filtered) {
-      const key = p.sessionLabel?.trim() || "General";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(p);
-    }
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [presentations, search]);
+    return groupPresentationsByDay(filtered, conferenceDays);
+  }, [presentations, search, conferenceDays]);
 
   function toggleGroup(key) {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -105,6 +115,39 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
     setSpeakers((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function onSpeakerSelect(speakerId) {
+    if (!speakerId) {
+      setPresForm((p) => ({
+        ...p,
+        speakerId: "",
+        speakerName: "",
+        speakerTitle: "",
+      }));
+      return;
+    }
+    const speaker = savedSpeakers.find((s) => s.id === speakerId);
+    if (!speaker) return;
+    setPresForm((p) => ({
+      ...p,
+      speakerId,
+      speakerName: String(speaker.name || "").trim(),
+      speakerTitle: String(speaker.title || "").trim(),
+    }));
+  }
+
+  function onCustomSpeakerName(name) {
+    const trimmed = name;
+    const match = savedSpeakers.find(
+      (s) => String(s.name || "").trim().toLowerCase() === trimmed.trim().toLowerCase(),
+    );
+    setPresForm((p) => ({
+      ...p,
+      speakerId: match?.id || "",
+      speakerName: trimmed,
+      speakerTitle: match ? String(match.title || "").trim() : "",
+    }));
+  }
+
   async function saveSpeakers() {
     const valid = speakers.filter((s) => s.name?.trim());
     setBusy(true);
@@ -127,13 +170,21 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
 
   async function addPresentation(e) {
     e.preventDefault();
+    if (!presForm.dayDate) {
+      toast.error("Select a conference day.");
+      return;
+    }
+    if (!presForm.title.trim()) {
+      toast.error("Presentation title is required.");
+      return;
+    }
     setBusy(true);
     try {
       const body = new FormData();
-      body.append("title", presForm.title);
-      body.append("speakerName", presForm.speakerName);
-      body.append("speakerTitle", presForm.speakerTitle);
-      body.append("sessionLabel", presForm.sessionLabel);
+      body.append("title", presForm.title.trim());
+      body.append("sessionLabel", presForm.dayDate);
+      body.append("speakerName", presForm.speakerName.trim());
+      body.append("speakerTitle", presForm.speakerTitle.trim());
       body.append("description", presForm.description);
       if (presForm.file) body.append("file", presForm.file);
       const res = await fetch(`/api/admin/conferences/${conferenceId}/presentations`, {
@@ -143,14 +194,7 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not add presentation.");
       toast.success("Presentation added.");
-      setPresForm({
-        title: "",
-        speakerName: "",
-        speakerTitle: "",
-        sessionLabel: "",
-        description: "",
-        file: null,
-      });
+      setPresForm(emptyPresForm);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not add presentation.");
@@ -195,8 +239,11 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
     : {
         title: "Conference presentations",
         description:
-          "Slides and materials from sessions. Approved members can browse and download.",
+          "Slides and materials from sessions. Grouped by conference day for approved members.",
       };
+
+  const usingExistingSpeaker = Boolean(presForm.speakerId);
+  const speakerDisplay = formatPresentationSpeaker(presForm.speakerName, presForm.speakerTitle);
 
   return (
     <div className={nested ? "space-y-6" : "space-y-8"}>
@@ -210,7 +257,7 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
           {speakers.map((speaker, index) => (
             <div
               key={speaker.id || index}
-              className="rounded-md border border-border p-4 space-y-3"
+              className="space-y-3 rounded-md border border-border p-4"
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <Input
@@ -278,6 +325,14 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
             Session presentations
           </p>
         ) : null}
+
+        {conferenceDays.length === 0 ? (
+          <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Add conference days in the conference schedule first. Presentations are grouped by
+            those days (Day 1, Day 2, …).
+          </p>
+        ) : null}
+
         <form onSubmit={addPresentation} className="mb-6 space-y-3 rounded-md border border-border p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
@@ -286,31 +341,88 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
               value={presForm.title}
               onChange={(e) => setPresForm((p) => ({ ...p, title: e.target.value }))}
             />
-            <Input
-              label="Session / day label"
-              hint="e.g. Day 1 — Plenary"
-              value={presForm.sessionLabel}
-              onChange={(e) => setPresForm((p) => ({ ...p, sessionLabel: e.target.value }))}
-            />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Day <span className="text-error">*</span>
+              </label>
+              <select
+                required
+                value={presForm.dayDate}
+                onChange={(e) => setPresForm((p) => ({ ...p, dayDate: e.target.value }))}
+                disabled={conferenceDays.length === 0}
+                className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm disabled:opacity-60"
+              >
+                <option value="">Select day…</option>
+                {conferenceDays.map((day) => (
+                  <option key={day.date} value={day.date}>
+                    {day.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label="Speaker name"
-              value={presForm.speakerName}
-              onChange={(e) => setPresForm((p) => ({ ...p, speakerName: e.target.value }))}
-            />
-            <Input
-              label="Speaker title"
-              value={presForm.speakerTitle}
-              onChange={(e) => setPresForm((p) => ({ ...p, speakerTitle: e.target.value }))}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Speaker
+              </label>
+              <select
+                value={presForm.speakerId}
+                onChange={(e) => onSpeakerSelect(e.target.value)}
+                className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+              >
+                <option value="">Type a name or pick a speaker…</option>
+                {savedSpeakers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {formatPresentationSpeaker(s.name, s.title) || s.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choosing a speaker uses their name and title together.
+              </p>
+            </div>
+            <div>
+              {usingExistingSpeaker ? (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">
+                    Speaker (from list)
+                  </label>
+                  <p className="flex h-10 items-center rounded-md border border-border bg-neutral-50 px-3 text-sm text-foreground">
+                    {speakerDisplay || "—"}
+                  </p>
+                </div>
+              ) : (
+                <Input
+                  label="Speaker name"
+                  hint="Type a custom name if not in the list"
+                  value={presForm.speakerName}
+                  list="presentation-speaker-suggestions"
+                  onChange={(e) => onCustomSpeakerName(e.target.value)}
+                />
+              )}
+              <datalist id="presentation-speaker-suggestions">
+                {savedSpeakers.map((s) => (
+                  <option key={s.id} value={s.name} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Description
+            </label>
+            <textarea
+              rows={3}
+              value={presForm.description}
+              onChange={(e) => setPresForm((p) => ({ ...p, description: e.target.value }))}
+              placeholder="Optional short description"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
             />
           </div>
-          <Input
-            label="Description"
-            hint="Optional"
-            value={presForm.description}
-            onChange={(e) => setPresForm((p) => ({ ...p, description: e.target.value }))}
-          />
+
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Slides / file
@@ -324,7 +436,11 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
               className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary-light file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary"
             />
           </div>
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={busy || conferenceDays.length === 0}
+          >
             <Icon icon={Upload} size="sm" />
             Add presentation
           </Button>
@@ -332,7 +448,7 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
 
         <Input
           label="Search presentations"
-          hint="Filter by title, speaker, or session"
+          hint="Filter by title, speaker, or day"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -373,14 +489,23 @@ export function ConferenceAdminSpeakersPresentationsTab({ conferenceId, nested =
                             <p className="text-sm font-medium text-foreground">{p.title}</p>
                             {p.speakerName ? (
                               <p className="text-xs text-muted-foreground">
-                                {p.speakerName}
-                                {p.speakerTitle ? ` · ${p.speakerTitle}` : ""}
+                                {formatPresentationSpeaker(p.speakerName, p.speakerTitle)}
+                              </p>
+                            ) : null}
+                            {p.description ? (
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {p.description}
                               </p>
                             ) : null}
                           </div>
                           <div className="flex gap-2">
                             {p.downloadUrl ? (
-                              <Button variant="outline" size="sm" href={p.downloadUrl} target="_blank">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                href={p.downloadUrl}
+                                target="_blank"
+                              >
                                 Open
                               </Button>
                             ) : null}

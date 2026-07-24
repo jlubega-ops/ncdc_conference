@@ -60,51 +60,53 @@ export function DashboardSidebar({ mobileOpen, onClose }) {
 
   const navItems = getNavForRole(session.activeRole);
 
-  const content = (
-    <>
-      <div className="border-b border-border px-4 py-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Active role
-        </p>
-        <p className="mt-1 text-sm font-semibold text-primary">
-          {ROLE_LABELS[session.activeRole] ?? session.activeRole}
-        </p>
-      </div>
-      <nav className="flex-1 space-y-1 p-3" aria-label="Dashboard">
-        {navItems.map((item) => {
-          const LucideIcon = ICON_MAP[item.icon] ?? LayoutDashboard;
-          const active =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+  const roleHeader = (
+    <div className="shrink-0 border-b border-border px-4 py-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Active role
+      </p>
+      <p className="mt-1 text-sm font-semibold text-primary">
+        {ROLE_LABELS[session.activeRole] ?? session.activeRole}
+      </p>
+    </div>
+  );
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-                active
-                  ? "bg-primary-light text-primary"
-                  : "text-foreground hover:bg-neutral-50",
-              )}
-            >
-              <Icon icon={LucideIcon} size="sm" />
-              <span className="flex-1">{item.label}</span>
-              {item.permission === PERMISSIONS.MY_PAPERS ? (
-                <PaperNotificationBadge />
-              ) : null}
-            </Link>
-          );
-        })}
-      </nav>
-    </>
+  const nav = (
+    <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3" aria-label="Dashboard">
+      {navItems.map((item) => {
+        const LucideIcon = ICON_MAP[item.icon] ?? LayoutDashboard;
+        const active =
+          pathname === item.href ||
+          (item.href !== "/dashboard" && pathname.startsWith(item.href));
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+              active
+                ? "bg-primary-light text-primary"
+                : "text-foreground hover:bg-neutral-50",
+            )}
+          >
+            <Icon icon={LucideIcon} size="sm" />
+            <span className="flex-1">{item.label}</span>
+            {item.permission === PERMISSIONS.MY_PAPERS ? (
+              <PaperNotificationBadge />
+            ) : null}
+          </Link>
+        );
+      })}
+    </nav>
   );
 
   return (
     <>
-      <aside className="hidden h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-surface lg:flex">
-        {content}
+      <aside className="hidden h-full w-64 shrink-0 flex-col overflow-hidden border-r border-border bg-surface lg:flex">
+        {roleHeader}
+        {nav}
       </aside>
 
       {mobileOpen ? (
@@ -115,8 +117,8 @@ export function DashboardSidebar({ mobileOpen, onClose }) {
             aria-label="Close menu"
             onClick={onClose}
           />
-          <aside className="relative flex h-full w-[min(100%,280px)] flex-col bg-surface shadow-xl">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <aside className="relative flex h-full w-[min(100%,280px)] flex-col overflow-hidden bg-surface shadow-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
               <span className="font-semibold text-foreground">Menu</span>
               <button
                 type="button"
@@ -127,7 +129,8 @@ export function DashboardSidebar({ mobileOpen, onClose }) {
                 <Icon icon={X} size="md" />
               </button>
             </div>
-            {content}
+            {roleHeader}
+            {nav}
           </aside>
         </div>
       ) : null}

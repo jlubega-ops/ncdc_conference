@@ -24,7 +24,7 @@ export function getDefaultDashboardPath(sessionOrRole) {
       return "/dashboard/reviewer/papers";
     case "ATTENDEE": {
       const slug = getActiveConferenceSlug(session);
-      return slug ? `/conferences/${slug}` : "/login?mode=access";
+      return slug ? `/conferences/${slug}` : "/dashboard/my-registrations";
     }
     case "SUPERADMIN":
     case "CONFERENCE_ADMIN":

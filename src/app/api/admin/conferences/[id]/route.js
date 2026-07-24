@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
-import { slugify } from "@/lib/conferences/utils";
+import { sanitizeOnlineStreamForSave, slugify } from "@/lib/conferences/utils";
 import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
+import { deleteConferenceWithCascade } from "@/lib/conferences/delete";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { prisma } from "@/lib/prisma";
 
 /**
  * @param {any} input
@@ -121,7 +122,7 @@ function buildUpdatePayload(input) {
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
-    onlineStream: input.onlineStream || null,
+    onlineStream: sanitizeOnlineStreamForSave(input.onlineStream),
     contacts: input.contacts || null,
     publishedAt: publicationStatus === "PUBLISHED" ? new Date() : null,
   };
@@ -173,31 +174,59 @@ export async function DELETE(request, { params }) {
       { status: 401 },
     );
   }
+
+  let body = {};
   try {
-    const existing = await prisma.conference.findUnique({
-      where: { id },
-      select: { id: true, title: true },
-    });
-    if (!existing) {
-      return NextResponse.json({ error: "Conference not found." }, { status: 404 });
-    }
-    await prisma.conference.delete({ where: { id } });
+    body = await request.json();
+  } catch {
+    /* confirm may be missing */
+  }
+  if (String(body.confirm || "").trim() !== "DELETE") {
+    return NextResponse.json(
+      { error: "Type DELETE to confirm permanent conference deletion." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await deleteConferenceWithCascade(id);
     await logActivity({
       session,
       request,
       action: ACTIVITY_ACTIONS.CONFERENCE_DELETE,
-      description: `Deleted conference "${existing.title}".`,
+      description: `Deleted conference "${result.title}" (${result.deletedOrphanAttendees} orphan attendee account(s) removed).`,
       resourceType: "conference",
       resourceId: id,
       conferenceId: id,
+      metadata: {
+        deletedOrphanAttendees: result.deletedOrphanAttendees,
+        registrationCount: result.impact.registrationCount,
+        orphanEmails: result.orphanUsers.map((u) => u.email),
+      },
     });
+    for (const orphan of result.orphanUsers) {
+      await logActivity({
+        session,
+        request,
+        action: ACTIVITY_ACTIONS.USER_DELETE,
+        description: `Deleted attendee ${orphan.email} after conference "${result.title}" deletion (only belonged to that conference).`,
+        resourceType: "user",
+        resourceId: orphan.id,
+        conferenceId: id,
+        metadata: {
+          email: orphan.email,
+          reason: "orphan_attendee_after_conference_delete",
+        },
+      });
+    }
     return NextResponse.json({
       ok: true,
-      message:
-        "Conference deleted successfully. All related data was also removed based on cascade rules.",
+      message: result.message,
+      deletedOrphanAttendees: result.deletedOrphanAttendees,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not delete conference.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const status = message.includes("not found") ? 404 : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }

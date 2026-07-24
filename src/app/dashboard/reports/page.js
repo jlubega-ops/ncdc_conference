@@ -9,7 +9,7 @@ export const metadata = {
 
 export default async function ReportsPage() {
   const session = await getCurrentSession();
-  if (!session) redirect("/login?redirect=/dashboard/reports");
+  if (!session) redirect("/login?redirect=/dashboard/reports&reason=session_expired");
 
   if (!canAccessReports(session)) {
     redirect("/dashboard");

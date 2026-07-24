@@ -3,7 +3,13 @@ import { buildProfilePayload } from "@/lib/users/profile";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const ASSIGNABLE_ROLES = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER", "ATTENDEE"];
+/** Roles that can be set from the Users admin create/edit form. */
+export const ADMIN_FORM_ROLES = ["SUPERADMIN", "CONFERENCE_ADMIN"];
+
+/**
+ * Roles assigned via conference registration / reviewer assignment — not via create user.
+ */
+export const CONFERENCE_ASSIGNED_ROLES = ["REVIEWER", "ATTENDEE"];
 
 /**
  * @param {Record<string, unknown>} data
@@ -15,7 +21,7 @@ export function validateAdminCreateUser(data) {
   const lastName = String(data.lastName ?? "").trim();
   const email = String(data.email ?? "").trim().toLowerCase();
   const gender = String(data.gender ?? "").trim();
-  const roles = Array.isArray(data.roles) ? data.roles.filter(Boolean) : [];
+  const rawRoles = Array.isArray(data.roles) ? data.roles.filter(Boolean) : [];
   const conferenceIds = Array.isArray(data.conferenceIds)
     ? data.conferenceIds.filter(Boolean)
     : [];
@@ -26,24 +32,28 @@ export function validateAdminCreateUser(data) {
   else if (!EMAIL_RE.test(email)) errors.email = "Enter a valid email address.";
   if (!gender || !["M", "F"].includes(gender)) errors.gender = "Please select gender.";
 
-  if (roles.length === 0) errors.roles = "Select at least one role.";
+  const requestedAdminRoles = rawRoles.filter((r) => ADMIN_FORM_ROLES.includes(r));
 
-  const invalidRoles = roles.filter((r) => !ASSIGNABLE_ROLES.includes(r));
-  if (invalidRoles.length) errors.roles = "Invalid role selection.";
+  // Conference Admin without a conference is not assigned.
+  const roles = requestedAdminRoles.filter((role) => {
+    if (role === "CONFERENCE_ADMIN" && conferenceIds.length === 0) return false;
+    return true;
+  });
 
-  const needsConference = roles.some((r) =>
-    ["CONFERENCE_ADMIN", "REVIEWER"].includes(r),
-  );
-  if (needsConference && conferenceIds.length === 0) {
-    errors.conferenceIds = "Select at least one conference for conference-scoped roles.";
+  if (roles.length === 0) {
+    errors.roles =
+      requestedAdminRoles.includes("CONFERENCE_ADMIN") && conferenceIds.length === 0
+        ? "Select at least one conference for Conference Admin, or choose Super Admin."
+        : "Select Super Admin and/or Conference Admin (with a conference). Attendee and Reviewer are assigned through conferences.";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors, values: null };
   }
 
   return {
-    errors,
+    errors: {},
     values: {
-      firstName,
-      middleName: middleName || null,
-      lastName,
       email,
       gender,
       roles,
@@ -53,6 +63,10 @@ export function validateAdminCreateUser(data) {
         middleName,
         lastName,
         gender,
+        telephone: data.telephone,
+        countryCode: data.countryCode,
+        countryOfOrigin: data.countryOfOrigin,
+        institution: data.institution,
       }),
     },
   };
@@ -69,36 +83,14 @@ export function validateAdminUpdateUser(data) {
  * @param {Record<string, unknown>} data
  */
 export function validateProfileUpdate(data) {
-  const { errors, values } = validateRegistrationForm(
-    {
-      ...data,
-      subThemes: [],
-      postConferenceEvents: "No",
-      hasDisability: "No",
-      hasPaymentProof: false,
-    },
-    { requiresPayment: false, subThemes: [] },
-  );
-
-  const allowed = [
-    "firstName",
-    "middleName",
-    "lastName",
-    "gender",
-    "ageRange",
-    "countryCode",
-    "telephone",
-    "countryOfOrigin",
-    "institution",
-    "attendanceMode",
-  ];
-  const filteredErrors = {};
-  for (const key of allowed) {
-    if (errors[key]) filteredErrors[key] = errors[key];
+  const { errors, values } = validateRegistrationForm(data, { requireEmail: false });
+  if (Object.keys(errors).length > 0) {
+    return { errors, values: null };
   }
-
   return {
-    errors: filteredErrors,
-    values: buildProfilePayload(values),
+    errors: {},
+    values: {
+      profile: buildProfilePayload(values),
+    },
   };
 }

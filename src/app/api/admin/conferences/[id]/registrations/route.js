@@ -3,6 +3,26 @@ import { prisma } from "@/lib/prisma";
 import { requireConferenceAccess } from "@/lib/auth/guards";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
 
+/**
+ * Pick the latest lastUsedAt for a registration from matching access keys.
+ * @param {Array<{ email: string; userId: string | null; lastUsedAt: Date | null }>} accessKeys
+ * @param {{ userId?: string; email?: string }} row
+ */
+function resolveLastAccessAt(accessKeys, row) {
+  const email = row.email?.toLowerCase();
+  let latest = null;
+  for (const key of accessKeys) {
+    if (!key.lastUsedAt) continue;
+    const matchesUser = row.userId && key.userId === row.userId;
+    const matchesEmail = email && key.email?.toLowerCase() === email;
+    if (!matchesUser && !matchesEmail) continue;
+    if (!latest || key.lastUsedAt > latest) {
+      latest = key.lastUsedAt;
+    }
+  }
+  return latest;
+}
+
 export async function GET(_request, { params }) {
   const { id } = await params;
   const session = await requireConferenceAccess(id);
@@ -18,7 +38,7 @@ export async function GET(_request, { params }) {
     }),
     prisma.conferenceAccessKey.findMany({
       where: { conferenceId: id, revokedAt: null },
-      select: { email: true, userId: true },
+      select: { email: true, userId: true, lastUsedAt: true },
     }),
   ]);
 
@@ -30,7 +50,14 @@ export async function GET(_request, { params }) {
       const email = row.user?.email?.toLowerCase();
       const hasAccessKey =
         (email && keyEmails.has(email)) || (row.userId && keyUserIds.has(row.userId));
-      return mapRegistrationForAdmin(row, { hasAccessKey: Boolean(hasAccessKey) });
+      const lastAccessAt = resolveLastAccessAt(accessKeys, {
+        userId: row.userId,
+        email,
+      });
+      return mapRegistrationForAdmin(row, {
+        hasAccessKey: Boolean(hasAccessKey),
+        lastAccessAt,
+      });
     }),
   });
 }

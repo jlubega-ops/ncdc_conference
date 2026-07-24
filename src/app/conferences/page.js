@@ -1,4 +1,5 @@
 import { ConferenceCard } from "@/components/ConferenceCard";
+import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
 import { getPublishedConferences } from "@/lib/conferences/service";
 
 export const metadata = {
@@ -7,6 +8,8 @@ export const metadata = {
 };
 
 export default async function ConferencesPage() {
+  await redirectIfAuthenticated();
+
   const conferences = await getPublishedConferences();
 
   return (

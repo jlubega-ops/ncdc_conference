@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { LoginPanel } from "@/components/auth/LoginPanel";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
-import { getCurrentSession } from "@/lib/auth/session";
+import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
 
 export const metadata = {
   title: "Sign in | Conference Management",
@@ -10,17 +9,11 @@ export const metadata = {
 };
 
 export default async function LoginPage({ searchParams }) {
+  await redirectIfAuthenticated();
+
   const params = await searchParams;
   const redirectTo = params?.redirect;
-
-  try {
-    const existing = await getCurrentSession();
-    if (existing) {
-      redirect(typeof redirectTo === "string" ? redirectTo : "/dashboard");
-    }
-  } catch {
-    /* database unavailable */
-  }
+  const expired = params?.reason === "session_expired";
 
   return (
     <PublicFormLayout
@@ -34,9 +27,21 @@ export default async function LoginPage({ searchParams }) {
         </Link>
       }
     >
-      {redirectTo ? (
+      {expired ? (
+        <p className="mb-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          Your session expired due to inactivity. Please sign in again.
+        </p>
+      ) : null}
+
+      {redirectTo && !expired ? (
         <p className="mb-4 rounded-md bg-primary-light px-3 py-2 text-xs text-primary">
           Sign in to continue to {redirectTo}
+        </p>
+      ) : null}
+
+      {redirectTo && expired ? (
+        <p className="mb-4 rounded-md bg-primary-light px-3 py-2 text-xs text-primary">
+          After signing in you will continue to {redirectTo}
         </p>
       ) : null}
 

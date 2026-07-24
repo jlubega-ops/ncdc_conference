@@ -32,6 +32,10 @@ export function RegistrationDetailFields({ row }) {
     ],
     ["Registered", formatAdminDate(row.registeredAt)],
     [
+      "Last access",
+      row.lastAccessAt ? formatAdminDate(row.lastAccessAt) : "Never",
+    ],
+    [
       "Payment status",
       row.status === "CONFIRMED" && row.paymentStatus
         ? "Paid"

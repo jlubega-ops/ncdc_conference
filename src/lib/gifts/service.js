@@ -16,11 +16,16 @@ import {
 } from "@/lib/gifts/settings";
 
 function emptyItemCounts(catalog) {
-  return (Array.isArray(catalog) ? catalog : []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    count: 0,
-  }));
+  return (Array.isArray(catalog) ? catalog : []).map((item) => {
+    const stock = Math.max(0, Number(item.stock) || 0);
+    return {
+      id: item.id,
+      name: item.name,
+      count: 0,
+      stock,
+      remaining: stock,
+    };
+  });
 }
 
 /**
@@ -250,17 +255,19 @@ export function giftsReportToCsv(data) {
   lines.push("");
 
   lines.push("Items issued (overall)");
-  lines.push(["Item", "Quantity issued"].map(esc).join(","));
+  lines.push(["Item", "Quantity issued", "Total stock", "Remaining"].map(esc).join(","));
   for (const item of data.report?.overall?.itemCounts ?? []) {
-    lines.push([item.name, item.count].map(esc).join(","));
+    lines.push([item.name, item.count, item.stock ?? "", item.remaining ?? ""].map(esc).join(","));
   }
   lines.push("");
 
   lines.push("Items issued (by category)");
-  lines.push(["Category", "Item", "Quantity issued"].map(esc).join(","));
+  lines.push(["Category", "Item", "Quantity issued", "Total stock", "Remaining"].map(esc).join(","));
   for (const cat of data.report?.byCategory ?? []) {
     for (const item of cat.itemCounts ?? []) {
-      lines.push([cat.label, item.name, item.count].map(esc).join(","));
+      lines.push(
+        [cat.label, item.name, item.count, item.stock ?? "", item.remaining ?? ""].map(esc).join(","),
+      );
     }
   }
   lines.push("");

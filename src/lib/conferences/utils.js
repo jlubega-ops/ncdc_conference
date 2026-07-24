@@ -123,22 +123,92 @@ export function emptyPaymentDetails() {
 }
 
 export function emptyOnlineStream() {
-  return {
-    youtubeLink: "",
-    zoomDetails: "",
-  };
+  return [emptyOnlineStreamEntry()];
 }
 
 /**
+ * @returns {{ id: string; platform: string; link: string; description: string }}
+ */
+export function emptyOnlineStreamEntry() {
+  return {
+    id: createOnlineStreamId(),
+    platform: "",
+    link: "",
+    description: "",
+  };
+}
+
+function createOnlineStreamId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `stream-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Normalize online streams to an array of { id, platform, link, description }.
+ * Migrates legacy { youtubeLink, zoomDetails } shape.
+ * @param {unknown} raw
+ * @param {{ forEditor?: boolean }} [opts] — when true, always keep at least one blank row
+ */
+export function normalizeOnlineStream(raw, opts = {}) {
+  const forEditor = Boolean(opts.forEditor);
+  /** @type {Array<{ id: string; platform: string; link: string; description: string }>} */
+  let entries = [];
+
+  if (Array.isArray(raw)) {
+    entries = raw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const platform = String(item.platform || item.name || "").trim();
+        const link = String(item.link || item.url || "").trim();
+        const description = String(item.description || item.details || "").trim();
+        if (!forEditor && !platform && !link && !description) return null;
+        return {
+          id: String(item.id || "").trim() || createOnlineStreamId(),
+          platform,
+          link,
+          description,
+        };
+      })
+      .filter(Boolean);
+  } else if (raw && typeof raw === "object") {
+    // Legacy single YouTube / Zoom fields
+    const youtube = String(raw.youtubeLink || "").trim();
+    const zoom = String(raw.zoomDetails || "").trim();
+    if (youtube) {
+      entries.push({
+        id: createOnlineStreamId(),
+        platform: "YouTube",
+        link: youtube,
+        description: "",
+      });
+    }
+    if (zoom) {
+      const looksLikeUrl = /^https?:\/\//i.test(zoom) || /^[\w.-]+\.[a-z]{2,}/i.test(zoom.split(/\s/)[0] || "");
+      entries.push({
+        id: createOnlineStreamId(),
+        platform: "Zoom",
+        link: looksLikeUrl && !zoom.includes("\n") ? zoom.split(/\s/)[0] : "",
+        description: zoom,
+      });
+    }
+  }
+
+  if (forEditor && entries.length === 0) {
+    return [emptyOnlineStreamEntry()];
+  }
+  return entries;
+}
+
+/**
+ * Drop blank rows before persisting.
  * @param {unknown} raw
  */
-export function normalizeOnlineStream(raw) {
-  const base = emptyOnlineStream();
-  if (!raw || typeof raw !== "object") return base;
-  return {
-    youtubeLink: String(raw.youtubeLink || "").trim(),
-    zoomDetails: String(raw.zoomDetails || "").trim(),
-  };
+export function sanitizeOnlineStreamForSave(raw) {
+  return normalizeOnlineStream(raw, { forEditor: false }).filter(
+    (item) => item.platform || item.link || item.description,
+  );
 }
 
 export function emptyContacts() {

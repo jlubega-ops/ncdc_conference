@@ -25,6 +25,7 @@ export const ACTIVITY_ACTIONS = {
   CONFERENCE_CREATE: "conference.create",
   CONFERENCE_UPDATE: "conference.update",
   CONFERENCE_DELETE: "conference.delete",
+  CONFERENCE_DUPLICATE: "conference.duplicate",
   CONFERENCE_SPEAKERS_UPDATE: "conference.speakers_update",
   CONFERENCE_ADMIN_ASSIGN: "conference.admin_assign",
   CONFERENCE_ADMIN_REMOVE: "conference.admin_remove",

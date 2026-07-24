@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireConferenceAccess } from "@/lib/auth/guards";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
 import { buildProfilePayload, getProfileFromUser } from "@/lib/users/profile";
+import { deleteUserIfOrphanAttendee } from "@/lib/users/orphan-attendee";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
@@ -133,26 +134,33 @@ export async function DELETE(request, { params }) {
   }
 
   const email = registration.user.email.toLowerCase();
+  const userId = registration.userId;
 
   await prisma.$transaction([
     prisma.conferenceAttendance.deleteMany({
-      where: { conferenceId: id, userId: registration.userId },
+      where: { conferenceId: id, userId },
     }),
     prisma.conferenceFeedback.deleteMany({
-      where: { conferenceId: id, userId: registration.userId },
+      where: { conferenceId: id, userId },
     }),
     prisma.conferenceCertificate.deleteMany({
-      where: { conferenceId: id, userId: registration.userId },
+      where: { conferenceId: id, userId },
+    }),
+    prisma.conferenceGiftIssuance.deleteMany({
+      where: { conferenceId: id, userId },
+    }),
+    prisma.paperSubmission.deleteMany({
+      where: { conferenceId: id, userId },
     }),
     prisma.conferenceAccessKey.deleteMany({
       where: {
         conferenceId: id,
-        OR: [{ userId: registration.userId }, { email }],
+        OR: [{ userId }, { email }],
       },
     }),
     prisma.userRole.deleteMany({
       where: {
-        userId: registration.userId,
+        userId,
         conferenceId: id,
         role: "ATTENDEE",
       },
@@ -162,18 +170,39 @@ export async function DELETE(request, { params }) {
     }),
   ]);
 
+  const userDeleted = await deleteUserIfOrphanAttendee(userId, id);
+
   await logActivity({
     session,
     request,
     action: ACTIVITY_ACTIONS.REGISTRATION_DELETE,
-    description: `Removed registration for ${email}`,
+    description: userDeleted
+      ? `Removed registration for ${email} and deleted their account (only belonged to this conference).`
+      : `Removed registration for ${email}`,
     resourceType: "registration",
     resourceId: registration.id,
     conferenceId: id,
+    metadata: { userDeleted, email },
   });
+
+  if (userDeleted) {
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.USER_DELETE,
+      description: `Deleted attendee ${email} after removing their only conference registration.`,
+      resourceType: "user",
+      resourceId: userId,
+      conferenceId: id,
+      metadata: { email, reason: "orphan_attendee_after_registration_delete" },
+    });
+  }
 
   return NextResponse.json({
     ok: true,
-    message: "Registration removed from this conference.",
+    userDeleted,
+    message: userDeleted
+      ? "Registration removed. The attendee account was also deleted because they only belonged to this conference."
+      : "Registration removed from this conference. The attendee account was kept because they belong to other conferences or hold staff roles.",
   });
 }

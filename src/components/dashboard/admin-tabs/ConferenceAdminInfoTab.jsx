@@ -17,6 +17,7 @@ import {
   formatProgrammeDayLabel,
   formatProgrammeTimeSlot,
   getSpeakersForDate,
+  normalizeOnlineStream,
   normalizeProgrammeForDisplay,
 } from "@/lib/conferences/utils";
 
@@ -277,31 +278,36 @@ export function ConferenceAdminInfoTab({ conference }) {
         </div>
       ) : null}
 
-      {conference.onlineStream &&
-      (conference.onlineStream.youtubeLink || conference.onlineStream.zoomDetails) ? (
+      {normalizeOnlineStream(conference.onlineStream).length > 0 ? (
         <div className="mt-6 border-t border-border pt-6">
-          <h2 className="text-sm font-semibold text-foreground">Online stream</h2>
-          {conference.onlineStream.youtubeLink ? (
-            <p className="mt-2 text-sm text-primary">
-              <a
-                href={
-                  conference.onlineStream.youtubeLink.startsWith("http")
-                    ? conference.onlineStream.youtubeLink
-                    : `https://${conference.onlineStream.youtubeLink}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                {conference.onlineStream.youtubeLink}
-              </a>
-            </p>
-          ) : null}
-          {conference.onlineStream.zoomDetails ? (
-            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">
-              {conference.onlineStream.zoomDetails}
-            </p>
-          ) : null}
+          <h2 className="text-sm font-semibold text-foreground">Online streams</h2>
+          <ul className="mt-3 space-y-3">
+            {normalizeOnlineStream(conference.onlineStream).map((entry) => {
+              const href = entry.link
+                ? entry.link.startsWith("http")
+                  ? entry.link
+                  : `https://${entry.link}`
+                : null;
+              return (
+                <li key={entry.id} className="text-sm">
+                  <p className="font-medium text-foreground">{entry.platform || "Stream"}</p>
+                  {href ? (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-0.5 inline-block break-all text-primary hover:underline"
+                    >
+                      {entry.link}
+                    </a>
+                  ) : null}
+                  {entry.description ? (
+                    <p className="mt-1 whitespace-pre-wrap text-foreground/80">{entry.description}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       ) : null}
 

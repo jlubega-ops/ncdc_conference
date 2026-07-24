@@ -4,11 +4,39 @@ export const RESOURCE_TYPES = {
   PRESENTATION_TEMPLATE: "PRESENTATION_TEMPLATE",
 };
 
+/** Category labels aligned with the admin Materials hub (attendee-facing). */
 export const RESOURCE_TYPE_LABELS = {
-  MATERIAL: "Material",
-  PAPER_TEMPLATE: "Paper template",
-  PRESENTATION_TEMPLATE: "Presentation template",
+  MATERIAL: "Materials",
+  PAPER_TEMPLATE: "Paper templates",
+  PRESENTATION_TEMPLATE: "Presentation templates",
 };
+
+export const MEMBER_CONTENT_SECTIONS = [
+  {
+    key: "materials",
+    type: RESOURCE_TYPES.MATERIAL,
+    title: "Materials",
+    description: "Handouts, guides, and general conference files.",
+  },
+  {
+    key: "paperTemplates",
+    type: RESOURCE_TYPES.PAPER_TEMPLATE,
+    title: "Paper templates",
+    description: "Templates for paper submissions.",
+  },
+  {
+    key: "presentationTemplates",
+    type: RESOURCE_TYPES.PRESENTATION_TEMPLATE,
+    title: "Presentation templates",
+    description: "Slide templates for presenters.",
+  },
+  {
+    key: "presentations",
+    type: null,
+    title: "Speakers & presentations",
+    description: "Session slides and speaker presentations.",
+  },
+];
 
 export const ALLOWED_RESOURCE_MIME = new Set([
   "application/pdf",

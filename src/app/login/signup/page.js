@@ -1,28 +1,19 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
-import { getCurrentSession } from "@/lib/auth/session";
+import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
 import { getRegistrableConferences } from "@/lib/conferences/registrable";
 
 export const metadata = {
-  title: "Register | NCDC Conference Platform",
+  title: "Register | Conference Platform",
   description: "Choose a conference to register for.",
 };
 
 export default async function SignupPage({ searchParams }) {
+  await redirectIfAuthenticated();
+
   const params = await searchParams;
-
-  try {
-    const existing = await getCurrentSession();
-    if (existing) {
-      redirect(typeof params?.redirect === "string" ? params.redirect : "/dashboard");
-    }
-  } catch {
-    /* database unavailable */
-  }
-
   const conferences = await getRegistrableConferences();
   const preselected = params?.conference?.trim();
 

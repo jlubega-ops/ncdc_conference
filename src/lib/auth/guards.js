@@ -26,7 +26,7 @@ export async function requireConferenceManager() {
 export async function requireConferenceManagerPage(returnPath) {
   const session = await getCurrentSession();
   if (!session) {
-    redirect(`/login?redirect=${encodeURIComponent(returnPath)}`);
+    redirect(`/login?redirect=${encodeURIComponent(returnPath)}&reason=session_expired`);
   }
   if (!["SUPERADMIN", "CONFERENCE_ADMIN"].includes(session.activeRole)) {
     if (session.activeRole === "REVIEWER") {
@@ -43,7 +43,7 @@ export async function requireConferenceManagerPage(returnPath) {
 export async function requireReviewerPage(returnPath) {
   const session = await getCurrentSession();
   if (!session) {
-    redirect(`/login?redirect=${encodeURIComponent(returnPath)}`);
+    redirect(`/login?redirect=${encodeURIComponent(returnPath)}&reason=session_expired`);
   }
   if (session.activeRole !== "REVIEWER") {
     if (["SUPERADMIN", "CONFERENCE_ADMIN"].includes(session.activeRole)) {
@@ -82,7 +82,7 @@ export async function requireSuperadminCapability() {
 export async function requireSuperadminPage(returnPath) {
   const session = await getCurrentSession();
   if (!session) {
-    redirect(`/login?redirect=${encodeURIComponent(returnPath)}`);
+    redirect(`/login?redirect=${encodeURIComponent(returnPath)}&reason=session_expired`);
   }
   if (session.activeRole !== "SUPERADMIN") {
     redirect(getDefaultDashboardPath(session));
@@ -97,7 +97,7 @@ export async function requireSuperadminPage(returnPath) {
 export async function requirePermissionPage(permission, returnPath) {
   const session = await getCurrentSession();
   if (!session) {
-    redirect(`/login?redirect=${encodeURIComponent(returnPath)}`);
+    redirect(`/login?redirect=${encodeURIComponent(returnPath)}&reason=session_expired`);
   }
   if (!hasPermission(session.activeRole, permission)) {
     redirect(getDefaultDashboardPath(session));

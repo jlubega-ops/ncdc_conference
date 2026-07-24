@@ -10,7 +10,7 @@ const userSelect = {
 
 /**
  * @param {any} row
- * @param {{ hasAccessKey?: boolean }} [extras]
+ * @param {{ hasAccessKey?: boolean; lastAccessAt?: Date | string | null }} [extras]
  */
 export function mapRegistrationForAdmin(row, extras = {}) {
   const form = row.formData && typeof row.formData === "object" ? row.formData : {};
@@ -21,6 +21,10 @@ export function mapRegistrationForAdmin(row, extras = {}) {
   const accessKeyIssued =
     extras.hasAccessKey ??
     (row.status === "CONFIRMED" && Boolean(row.user));
+  const lastAccessAt =
+    extras.lastAccessAt !== undefined
+      ? extras.lastAccessAt
+      : null;
   return {
     id: row.id,
     status: row.status,
@@ -46,6 +50,8 @@ export function mapRegistrationForAdmin(row, extras = {}) {
     /** Access code has been issued for this conference registration. */
     accountActivated: accessKeyIssued,
     accessKeyIssued,
+    /** Last successful access-code sign-in; null if never used. */
+    lastAccessAt,
     formData: form,
     displayName:
       form.fullName ||

@@ -9,7 +9,7 @@ import {
 } from "@react-pdf/renderer";
 import { colors } from "@/theme/tokens";
 
-const LOGO_PATH = path.join(process.cwd(), "public", "assets", "ncdc_logo.jpg");
+const LOGO_PATH = path.join(process.cwd(), "public", "assets", "logo.png");
 
 /** A4 landscape — exact PDF points (297mm × 210mm). */
 const A4_LANDSCAPE_WIDTH = 841.89;

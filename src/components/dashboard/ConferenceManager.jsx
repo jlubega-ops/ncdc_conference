@@ -7,19 +7,20 @@ import {
   Save,
   Pencil,
   Trash2,
+  Copy,
   Upload,
   X,
   Calendar,
   MapPin,
   Search,
   CircleDot,
-  Eye,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useSession } from "@/components/auth/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Icon } from "@/components/ui/Icon";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { ConferenceImage } from "@/components/ConferenceImage";
 import {
@@ -43,6 +44,7 @@ import {
   createSpeakerId,
   emptyContacts,
   emptyOnlineStream,
+  emptyOnlineStreamEntry,
   emptyPaymentDetails,
   formatProgrammeDayLabel,
   formatProgrammeTimeSlot,
@@ -88,7 +90,7 @@ function emptyConference() {
     category: CATEGORIES[0],
     publicationStatus: "DRAFT",
     featured: false,
-    cardImage: "/assets/ncdc_image.jpg",
+    cardImage: "/assets/bg_image.jpg",
     reference: generateConferenceReference({ year: new Date().getFullYear() }),
     registrationMode: "MANUAL_APPROVE",
     allowPaperSubmissions: false,
@@ -121,7 +123,7 @@ function mapConferenceFormExtras(conf) {
     requiresPayment: Boolean(conf.requiresPayment),
     paymentDetails: normalizePaymentDetails(conf.paymentDetails),
     paidContentVisibility: normalizePaidContentVisibility(conf.paidContentVisibility),
-    onlineStream: normalizeOnlineStream(conf.onlineStream),
+    onlineStream: normalizeOnlineStream(conf.onlineStream, { forEditor: true }),
     contacts: normalizeContacts(conf.contacts),
   };
 }
@@ -207,7 +209,7 @@ function normalizeForSubmit(form, publicationStatusOverride) {
     paidContentVisibility: form.requiresPayment
       ? normalizePaidContentVisibility(form.paidContentVisibility)
       : null,
-    onlineStream: normalizeOnlineStream(form.onlineStream),
+    onlineStream: normalizeOnlineStream(form.onlineStream, { forEditor: true }),
     contacts: normalizeContacts(form.contacts),
     feedbackSettings: normalizeFeedbackSettings(form.feedbackSettings),
     giftsSettings: applyGiftCategoryAvailability(
@@ -373,6 +375,9 @@ export function ConferenceManager({ conferences }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteImpact, setDeleteImpact] = useState(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [duplicateTarget, setDuplicateTarget] = useState(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
@@ -895,9 +900,23 @@ export function ConferenceManager({ conferences }) {
     onField("paidContentVisibility", { ...visibility, [key]: checked });
   }
 
-  function updateOnlineStreamField(field, value) {
-    const stream = normalizeOnlineStream(editing.onlineStream);
-    onField("onlineStream", { ...stream, [field]: value });
+  function updateOnlineStreamEntry(index, field, value) {
+    const streams = normalizeOnlineStream(editing.onlineStream, { forEditor: true });
+    const next = streams.map((entry, i) =>
+      i === index ? { ...entry, [field]: value } : entry,
+    );
+    onField("onlineStream", next);
+  }
+
+  function addOnlineStreamEntry() {
+    const streams = normalizeOnlineStream(editing.onlineStream, { forEditor: true });
+    onField("onlineStream", [...streams, emptyOnlineStreamEntry()]);
+  }
+
+  function removeOnlineStreamEntry(index) {
+    const streams = normalizeOnlineStream(editing.onlineStream, { forEditor: true });
+    const next = streams.filter((_, i) => i !== index);
+    onField("onlineStream", next.length > 0 ? next : [emptyOnlineStreamEntry()]);
   }
 
   function updateContactField(field, value) {
@@ -1188,13 +1207,26 @@ export function ConferenceManager({ conferences }) {
     }
   }
 
-  function requestDelete(conf) {
+  async function requestDelete(conf) {
     if (!canDeleteConference) {
       toast.error("Only system administrators can delete conferences.");
       return;
     }
     setDeleteTarget(conf);
     setDeleteConfirmText("");
+    setDeleteImpact(null);
+    setDeleteImpactLoading(true);
+    try {
+      const res = await fetch(`/api/admin/conferences/${conf.id}/delete-impact`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load delete impact.");
+      setDeleteImpact(data.impact);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load delete impact.");
+      setDeleteTarget(null);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
   }
 
   async function confirmDeleteConference() {
@@ -1206,14 +1238,50 @@ export function ConferenceManager({ conferences }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/admin/conferences/${deleteTarget.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/conferences/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed.");
       setList((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       if (editing.id === deleteTarget.id) beginCreate();
       setDeleteTarget(null);
       setDeleteConfirmText("");
+      setDeleteImpact(null);
       toast.success(data.message || "Conference deleted successfully.");
+    } catch (e) {
+      setError(e.message);
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function requestDuplicate(conf) {
+    if (!canDeleteConference) {
+      toast.error("Only system administrators can duplicate conferences.");
+      return;
+    }
+    setDuplicateTarget(conf);
+  }
+
+  async function confirmDuplicateConference() {
+    if (!duplicateTarget?.id) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/conferences/${duplicateTarget.id}/duplicate`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Duplicate failed.");
+      if (data.conference) {
+        setList((prev) => [data.conference, ...prev]);
+      }
+      setDuplicateTarget(null);
+      toast.success(data.message || "Conference duplicated.");
     } catch (e) {
       setError(e.message);
       toast.error(e.message);
@@ -1273,7 +1341,16 @@ export function ConferenceManager({ conferences }) {
             {filtered.map((conf) => (
               <article
                 key={conf.id}
-                className="overflow-hidden rounded-lg border border-border bg-background shadow-sm"
+                role="link"
+                tabIndex={0}
+                className="cursor-pointer overflow-hidden rounded-lg border border-border bg-background shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                onClick={() => router.push(`/dashboard/manage/${conf.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/dashboard/manage/${conf.id}`);
+                  }
+                }}
               >
                 <div className="relative h-40 w-full overflow-hidden">
                   <ConferenceImage src={conf.cardImage} alt={conf.title} />
@@ -1306,15 +1383,11 @@ export function ConferenceManager({ conferences }) {
                     {conf.category || "Uncategorized"}
                   </div>
 
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      icon={Eye}
-                      href={`/dashboard/manage/${conf.id}`}
-                    >
-                      View
-                    </Button>
+                  <div
+                    className="flex flex-nowrap items-center gap-2 overflow-x-auto pt-1"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
                     <Button
                       variant="outline"
                       size="sm"
@@ -1325,15 +1398,26 @@ export function ConferenceManager({ conferences }) {
                       Edit
                     </Button>
                     {canDeleteConference ? (
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        icon={Trash2}
-                        disabled={loading}
-                        onClick={() => requestDelete(conf)}
-                      >
-                        Delete
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          icon={Copy}
+                          disabled={loading}
+                          onClick={() => requestDuplicate(conf)}
+                        >
+                          Duplicate
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          icon={Trash2}
+                          disabled={loading}
+                          onClick={() => requestDelete(conf)}
+                        >
+                          Delete
+                        </Button>
+                      </>
                     ) : null}
                   </div>
                 </div>
@@ -1697,28 +1781,77 @@ export function ConferenceManager({ conferences }) {
                     />
 
                     <div className="rounded-lg border border-border bg-background p-4">
-                      <h4 className="text-sm font-semibold text-foreground">Online stream</h4>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Optional. Links can be restricted on public pages when payment is required.
-                      </p>
-                      <div className="mt-4 space-y-4">
-                        <Input
-                          label="YouTube link"
-                          value={normalizeOnlineStream(editing.onlineStream).youtubeLink}
-                          onChange={(e) => updateOnlineStreamField("youtubeLink", e.target.value)}
-                          placeholder="https://youtube.com/watch?v=..."
-                        />
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <FieldLabel>Zoom details</FieldLabel>
-                          <textarea
-                            className="min-h-24 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                            value={normalizeOnlineStream(editing.onlineStream).zoomDetails}
-                            onChange={(e) =>
-                              updateOnlineStreamField("zoomDetails", e.target.value)
-                            }
-                            placeholder="Paste Zoom link, meeting ID, and passcode. URLs will be clickable on public pages."
-                          />
+                          <h4 className="text-sm font-semibold text-foreground">Online streams</h4>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Add streaming platforms (Zoom, YouTube, Teams, etc.). Optional. Links
+                            can be restricted on public pages when payment is required.
+                          </p>
                         </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          icon={Plus}
+                          onClick={addOnlineStreamEntry}
+                        >
+                          Add stream
+                        </Button>
+                      </div>
+                      <div className="mt-4 space-y-4">
+                        {normalizeOnlineStream(editing.onlineStream, { forEditor: true }).map(
+                          (entry, index) => (
+                            <div
+                              key={entry.id}
+                              className="space-y-3 rounded-md border border-border p-4"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  Stream {index + 1}
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  icon={Trash2}
+                                  onClick={() => removeOnlineStreamEntry(index)}
+                                  aria-label={`Remove stream ${index + 1}`}
+                                />
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <Input
+                                  label="Platform name"
+                                  requiredMark
+                                  value={entry.platform}
+                                  onChange={(e) =>
+                                    updateOnlineStreamEntry(index, "platform", e.target.value)
+                                  }
+                                  placeholder="e.g. Zoom, YouTube, Microsoft Teams"
+                                />
+                                <Input
+                                  label="Link"
+                                  value={entry.link}
+                                  onChange={(e) =>
+                                    updateOnlineStreamEntry(index, "link", e.target.value)
+                                  }
+                                  placeholder="https://..."
+                                />
+                              </div>
+                              <div>
+                                <FieldLabel>Description (optional)</FieldLabel>
+                                <textarea
+                                  className="min-h-20 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                                  value={entry.description}
+                                  onChange={(e) =>
+                                    updateOnlineStreamEntry(index, "description", e.target.value)
+                                  }
+                                  placeholder="Meeting ID, passcode, or other joining notes"
+                                />
+                              </div>
+                            </div>
+                          ),
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2642,7 +2775,8 @@ export function ConferenceManager({ conferences }) {
                         <div className="rounded-lg border border-border bg-background p-4">
                           <h4 className="text-sm font-semibold text-foreground">Items</h4>
                           <p className="mt-1 text-sm text-foreground/80">
-                            Quantity is per participant (used for issuance reports).
+                            Qty is how many each recipient gets. Total stock is the inventory
+                            available for this conference.
                           </p>
                           <div className="mt-3 space-y-3">
                             {(editing.giftsSettings?.items ?? []).map((item, index) => (
@@ -2650,7 +2784,7 @@ export function ConferenceManager({ conferences }) {
                                 key={item.id}
                                 className="flex flex-wrap items-end gap-2"
                               >
-                                <div className="min-w-[180px] flex-1">
+                                <div className="min-w-[160px] flex-1">
                                   <Input
                                     label={index === 0 ? "Item" : undefined}
                                     value={item.name}
@@ -2665,7 +2799,7 @@ export function ConferenceManager({ conferences }) {
                                     }}
                                   />
                                 </div>
-                                <div className="w-28">
+                                <div className="w-24">
                                   <Input
                                     label={index === 0 ? "Qty" : undefined}
                                     type="number"
@@ -2678,6 +2812,28 @@ export function ConferenceManager({ conferences }) {
                                         quantity: Math.max(
                                           1,
                                           Number.parseInt(e.target.value, 10) || 1,
+                                        ),
+                                      };
+                                      onField("giftsSettings", {
+                                        ...editing.giftsSettings,
+                                        items: next,
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="w-28">
+                                  <Input
+                                    label={index === 0 ? "Total stock" : undefined}
+                                    type="number"
+                                    min={0}
+                                    value={item.stock ?? 0}
+                                    onChange={(e) => {
+                                      const next = [...(editing.giftsSettings.items ?? [])];
+                                      next[index] = {
+                                        ...next[index],
+                                        stock: Math.max(
+                                          0,
+                                          Number.parseInt(e.target.value, 10) || 0,
                                         ),
                                       };
                                       onField("giftsSettings", {
@@ -2715,7 +2871,7 @@ export function ConferenceManager({ conferences }) {
                                 ...editing.giftsSettings,
                                 items: [
                                   ...(editing.giftsSettings.items ?? []),
-                                  { id: createId("gift"), name: "", quantity: 1 },
+                                  { id: createId("gift"), name: "", quantity: 1, stock: 0 },
                                 ],
                               })
                             }
@@ -3084,18 +3240,79 @@ export function ConferenceManager({ conferences }) {
 
       {deleteTarget ? (
         <div className="fixed inset-0 z-90 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-xl border border-border bg-surface shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface shadow-2xl">
             <div className="border-b border-border px-5 py-4 sm:px-6">
               <h3 className="text-lg font-semibold text-foreground">Delete conference</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                You are about to delete <span className="font-semibold">{deleteTarget.title}</span>.
+                You are about to permanently delete{" "}
+                <span className="font-semibold text-foreground">{deleteTarget.title}</span>.
               </p>
             </div>
             <div className="space-y-4 px-5 py-4 sm:px-6">
-              <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
-                This action is permanent. All related conference data (such as access keys and
-                role assignments) will also be deleted.
-              </p>
+              <div className="rounded-md border border-error/30 bg-error/10 px-3 py-3 text-sm text-foreground">
+                <p className="font-semibold text-error">This cannot be undone.</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-foreground/90">
+                  <li>
+                    All conference data will be deleted: registrations, attendance, feedback,
+                    certificates, papers, resources, presentations, gifts, and access codes.
+                  </li>
+                  <li>
+                    Attendee accounts that belong <span className="font-semibold">only</span> to
+                    this conference will also be deleted entirely.
+                  </li>
+                  <li>
+                    Attendees registered to other conferences, and staff accounts
+                    (admins/reviewers), are kept.
+                  </li>
+                </ul>
+              </div>
+
+              {deleteImpactLoading ? (
+                <p className="text-sm text-muted-foreground">Calculating impact…</p>
+              ) : deleteImpact ? (
+                <div className="rounded-md border border-border bg-background px-3 py-3 text-sm">
+                  <p className="font-medium text-foreground">What will be removed</p>
+                  <ul className="mt-2 space-y-1 text-muted-foreground">
+                    <li>
+                      Registrations:{" "}
+                      <span className="font-medium text-foreground">
+                        {deleteImpact.registrationCount}
+                      </span>
+                    </li>
+                    <li>
+                      Attendance records:{" "}
+                      <span className="font-medium text-foreground">
+                        {deleteImpact.attendanceCount}
+                      </span>
+                    </li>
+                    <li>
+                      Papers / submissions:{" "}
+                      <span className="font-medium text-foreground">
+                        {deleteImpact.submissionCount}
+                      </span>
+                    </li>
+                    <li>
+                      Access codes:{" "}
+                      <span className="font-medium text-foreground">
+                        {deleteImpact.accessKeyCount}
+                      </span>
+                    </li>
+                    <li>
+                      Attendee accounts deleted (only this conference):{" "}
+                      <span className="font-medium text-error">
+                        {deleteImpact.orphanAttendeeCount}
+                      </span>
+                    </li>
+                    <li>
+                      Attendees kept (other conferences / staff):{" "}
+                      <span className="font-medium text-foreground">
+                        {deleteImpact.sharedAttendeeCount}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              ) : null}
+
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
                   Type <span className="font-semibold">DELETE</span> to confirm
@@ -3112,7 +3329,11 @@ export function ConferenceManager({ conferences }) {
               <Button
                 variant="danger"
                 icon={Trash2}
-                disabled={loading || deleteConfirmText !== "DELETE"}
+                disabled={
+                  loading ||
+                  deleteImpactLoading ||
+                  deleteConfirmText !== "DELETE"
+                }
                 onClick={confirmDeleteConference}
               >
                 Delete permanently
@@ -3124,6 +3345,7 @@ export function ConferenceManager({ conferences }) {
                 onClick={() => {
                   setDeleteTarget(null);
                   setDeleteConfirmText("");
+                  setDeleteImpact(null);
                 }}
               >
                 Cancel
@@ -3132,6 +3354,20 @@ export function ConferenceManager({ conferences }) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={Boolean(duplicateTarget)}
+        onClose={() => !loading && setDuplicateTarget(null)}
+        onConfirm={confirmDuplicateConference}
+        title="Duplicate conference?"
+        message={
+          duplicateTarget
+            ? `Create a draft copy of "${duplicateTarget.title}" titled "${duplicateTarget.title} - copy"? Registrations, attendees, and issued gifts will not be copied — only the conference setup.`
+            : ""
+        }
+        confirmLabel="Duplicate"
+        loading={loading}
+      />
 
     </div>
   );

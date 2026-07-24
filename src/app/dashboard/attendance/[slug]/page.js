@@ -11,7 +11,7 @@ export const metadata = {
 export default async function AttendanceConferencePage({ params }) {
   const session = await getCurrentSession();
   if (!session) {
-    redirect("/login?redirect=/dashboard/attendance");
+    redirect("/login?redirect=/dashboard/attendance&reason=session_expired");
   }
 
   const { slug } = await params;

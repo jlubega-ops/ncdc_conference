@@ -1,7 +1,7 @@
 /** Brand assets in /public/assets */
 export const brandAssets = {
-  logo: "/assets/ncdc_logo.jpg",
-  building: "/assets/ncdc_image.jpg",
+  logo: "/assets/logo.png",
+  building: "/assets/bg_image.jpg",
 };
 
 /**
@@ -9,3 +9,18 @@ export const brandAssets = {
  * Per-conference uploads: /public/assets/conferences/{slug}/card.jpg
  */
 export const defaultConferenceImage = brandAssets.building;
+
+/** Old default filename removed from public/assets */
+const LEGACY_DEFAULT_IMAGES = new Set(["/assets/ncdc_image.jpg"]);
+
+/**
+ * Resolve a conference/speaker image URL, remapping removed defaults.
+ * @param {string | null | undefined} src
+ */
+export function resolveConferenceImageSrc(src) {
+  const value = typeof src === "string" ? src.trim() : "";
+  if (!value || LEGACY_DEFAULT_IMAGES.has(value)) {
+    return defaultConferenceImage;
+  }
+  return value;
+}

@@ -40,10 +40,15 @@ export function normalizeGiftsSettings(raw) {
           const name = String(item.name ?? "").trim();
           if (!name) return null;
           const quantity = Math.max(1, Math.round(Number(item.quantity) || 1));
+          const stockRaw = Number(item.stock);
+          const stock = Number.isFinite(stockRaw)
+            ? Math.max(0, Math.round(stockRaw))
+            : 0;
           return {
             id: String(item.id ?? "").trim() || createId("gift"),
             name,
             quantity,
+            stock,
           };
         })
         .filter(Boolean)
@@ -190,17 +195,27 @@ export function describeIssuedGiftItems(issuedItems, catalog) {
  */
 export function sumIssuedItemCounts(roster, catalog) {
   const items = Array.isArray(catalog) ? catalog : [];
-  /** @type {Record<string, { id: string; name: string; count: number }>} */
-  const totals = {};
+  /** @type {Record<string, number>} */
+  const issuedTotals = {};
   for (const item of items) {
-    totals[item.id] = { id: item.id, name: item.name, count: 0 };
+    issuedTotals[item.id] = 0;
   }
   for (const row of roster || []) {
     const issued = row?.issuedItems && typeof row.issuedItems === "object" ? row.issuedItems : {};
     for (const [itemId, qty] of Object.entries(issued)) {
-      if (!totals[itemId]) continue;
-      totals[itemId].count += Math.max(0, Number(qty) || 0);
+      if (!(itemId in issuedTotals)) continue;
+      issuedTotals[itemId] += Math.max(0, Number(qty) || 0);
     }
   }
-  return items.map((item) => totals[item.id]);
+  return items.map((item) => {
+    const count = issuedTotals[item.id] || 0;
+    const stock = Math.max(0, Number(item.stock) || 0);
+    return {
+      id: item.id,
+      name: item.name,
+      count,
+      stock,
+      remaining: Math.max(0, stock - count),
+    };
+  });
 }

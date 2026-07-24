@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { GIFT_CATEGORY_PARTICIPANTS } from "@/lib/gifts/settings";
 
 /**
- * @param {{ id: string; name: string; count: number }[] | undefined} itemCounts
+ * @param {{ id: string; name: string; count: number; stock?: number; remaining?: number }[] | undefined} itemCounts
  */
 function ItemCountsLine({ itemCounts }) {
   const rows = (itemCounts || []).filter((item) => item.count > 0);
@@ -24,6 +24,13 @@ function ItemCountsLine({ itemCounts }) {
         <span key={item.id}>
           {i > 0 ? ", " : null}
           <strong className="tabular-nums text-primary">{item.count}</strong> {item.name}
+          {typeof item.stock === "number" && item.stock > 0 ? (
+            <span className="text-foreground/80">
+              {" "}
+              (<span className="tabular-nums">{item.remaining ?? 0}</span> remaining of{" "}
+              <span className="tabular-nums">{item.stock}</span>)
+            </span>
+          ) : null}
         </span>
       ))}
     </span>

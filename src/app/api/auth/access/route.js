@@ -142,7 +142,7 @@ export async function POST(request) {
 
     await prisma.conferenceAccessKey.update({
       where: { id: matchedKey.id },
-      data: { userId: user.id },
+      data: { userId: user.id, lastUsedAt: new Date() },
     });
 
     const token = await createUserSession(user.id, "ATTENDEE", request, {
@@ -155,7 +155,7 @@ export async function POST(request) {
       conferenceId: conference.id,
       conferenceSlug: conference.slug,
     });
-    await setSessionCookie(response, token);
+    await setSessionCookie(response, token, "ATTENDEE");
     await logActivity({
       session: {
         user: { id: user.id, email: user.email, name: user.name },

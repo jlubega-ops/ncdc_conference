@@ -3,6 +3,7 @@ import { requireConferenceAccess } from "@/lib/auth/guards";
 import {
   createConferencePresentation,
   deleteConferencePresentation,
+  getConferenceDaysForPresentations,
   listConferencePresentations,
 } from "@/lib/conference-content/service";
 import { logActivity } from "@/lib/activity-log/service";
@@ -17,8 +18,11 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const presentations = await listConferencePresentations(id);
-  return NextResponse.json({ presentations });
+  const [presentations, conferenceDays] = await Promise.all([
+    listConferencePresentations(id),
+    getConferenceDaysForPresentations(id),
+  ]);
+  return NextResponse.json({ presentations, conferenceDays });
 }
 
 export async function POST(request, { params }) {

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ConferenceRegistrationForm } from "@/components/conference/ConferenceRegistrationForm";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
 import { Button } from "@/components/ui/Button";
+import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
 import { getPublishedConferenceBySlug, isInviteOnlyConference } from "@/lib/conferences/service";
 import {
   allowsPublicRegistration,
@@ -23,6 +24,8 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function ConferenceRegisterPage({ params }) {
+  await redirectIfAuthenticated();
+
   const { slug } = await params;
   const conference = await getPublishedConferenceBySlug(slug);
 

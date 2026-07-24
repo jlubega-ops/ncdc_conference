@@ -8,7 +8,7 @@ export const metadata = {
 
 export default async function DashboardProfilePage() {
   const session = await getCurrentSession();
-  if (!session) redirect("/login?redirect=/dashboard/profile");
+  if (!session) redirect("/login?redirect=/dashboard/profile&reason=session_expired");
 
   return <ProfilePage />;
 }

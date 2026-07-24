@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { AccessKeyLoginForm } from "@/components/auth/AccessKeyLoginForm";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
+import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
 
 export const metadata = {
   title: "Access with code | Conference Management",
   description: "Enter your access code to open your conference.",
 };
 
-export default function AccessWithCodePage() {
+export default async function AccessWithCodePage() {
+  await redirectIfAuthenticated();
+
   return (
     <PublicFormLayout
       maxWidth="md"

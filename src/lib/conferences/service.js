@@ -19,7 +19,7 @@ import {
 import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
 import { normalizeGiftsSettings, applyGiftCategoryAvailability } from "@/lib/gifts/settings";
 
-const DEFAULT_IMAGE = "/assets/ncdc_image.jpg";
+const DEFAULT_IMAGE = "/assets/bg_image.jpg";
 
 /**
  * Published and not completed — available for public discovery.

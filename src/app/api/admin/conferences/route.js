@@ -6,7 +6,7 @@ import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
-import { slugify } from "@/lib/conferences/utils";
+import { sanitizeOnlineStreamForSave, slugify } from "@/lib/conferences/utils";
 import { generateConferenceReference, normalizeOrganiserShortName } from "@/lib/conferences/reference";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
@@ -125,7 +125,7 @@ function buildConferencePayload(input, userId) {
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
-    onlineStream: input.onlineStream || null,
+    onlineStream: sanitizeOnlineStreamForSave(input.onlineStream),
     contacts: input.contacts || null,
     publishedAt: publicationStatus === "PUBLISHED" ? new Date() : null,
     createdById: userId,
