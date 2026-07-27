@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
+import { authorizeConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
-import { sanitizeOnlineStreamForSave, slugify } from "@/lib/conferences/utils";
+import { sanitizeOnlineStreamForSave, sanitizeBreakoutRoomsForSave, slugify } from "@/lib/conferences/utils";
 import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
 import { deleteConferenceWithCascade } from "@/lib/conferences/delete";
 import { logActivity } from "@/lib/activity-log/service";
@@ -123,6 +123,7 @@ function buildUpdatePayload(input) {
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
     onlineStream: sanitizeOnlineStreamForSave(input.onlineStream),
+    breakoutRooms: sanitizeBreakoutRoomsForSave(input.breakoutRooms),
     contacts: input.contacts || null,
     publishedAt: publicationStatus === "PUBLISHED" ? new Date() : null,
   };
@@ -130,10 +131,11 @@ function buildUpdatePayload(input) {
 
 export async function PATCH(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const input = await request.json();

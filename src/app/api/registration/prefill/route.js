@@ -1,48 +1,34 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { getRegistrationPrefill } from "@/lib/users/service";
-import { checkRateLimit } from "@/lib/auth/rate-limit";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
 
 export async function GET() {
   return NextResponse.json(
-    { error: "Use POST or sign in to load your profile for registration." },
+    { error: "Use POST while signed in to load your profile for registration." },
     { status: 405 },
   );
 }
 
+/**
+ * Prefill only for the authenticated user's own email — never lookup by arbitrary email.
+ */
 export async function POST(request) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
-
-  const limit = checkRateLimit(`prefill:${ip}`, { limit: 15, windowMs: 60_000 });
+  const ip = clientIpFromRequest(request);
+  const limit = checkRateLimit(`prefill:${ip}`, { limit: 30, windowMs: 60_000 });
   if (!limit.allowed) {
     return NextResponse.json({ error: "Too many requests. Try again shortly." }, { status: 429 });
   }
 
   const session = await requireSession();
-  let email = "";
-
-  if (session) {
-    email = session.user.email.toLowerCase();
-  } else {
-    try {
-      const body = await request.json();
-      email = String(body.email ?? "")
-        .trim()
-        .toLowerCase();
-    } catch {
-      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-    }
-  }
-
-  if (!email || !email.includes("@")) {
+  if (!session) {
+    // Guests must not enumerate profiles by email.
     return NextResponse.json({ prefill: null });
   }
 
-  if (session && email !== session.user.email.toLowerCase()) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const email = session.user.email.toLowerCase();
+  if (!email || !email.includes("@")) {
+    return NextResponse.json({ prefill: null });
   }
 
   const prefill = await getRegistrationPrefill(email);

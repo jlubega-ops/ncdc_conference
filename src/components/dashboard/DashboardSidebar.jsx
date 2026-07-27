@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -49,16 +50,54 @@ const ICON_MAP = {
   ScrollText,
 };
 
+/** @type {Record<string, "submissions" | "registrations" | "feedback">} */
+const NAV_FEATURE_BY_PERMISSION = {
+  [PERMISSIONS.SUBMISSIONS]: "submissions",
+  [PERMISSIONS.REGISTRATIONS]: "registrations",
+  [PERMISSIONS.REVIEW_QUEUE]: "feedback",
+};
+
 /**
  * @param {{ mobileOpen: boolean, onClose: () => void }} props
  */
 export function DashboardSidebar({ mobileOpen, onClose }) {
   const pathname = usePathname();
   const { session } = useSession();
+  const [navFlags, setNavFlags] = useState(null);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    async function loadConferences() {
+      try {
+        const res = await fetch("/api/admin/nav-flags");
+        const data = await res.json();
+        if (!res.ok) return;
+        if (!cancelled && data?.flags) {
+          setNavFlags(data.flags);
+        }
+      } catch {
+        /* keep default nav visibility on fetch failure */
+      }
+    }
+    loadConferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  const navItems = useMemo(() => {
+    if (!session) return [];
+    const base = getNavForRole(session.activeRole);
+    if (!navFlags) return base;
+    return base.filter((item) => {
+      const flagKey = NAV_FEATURE_BY_PERMISSION[item.permission];
+      if (!flagKey) return true;
+      return Boolean(navFlags[flagKey]);
+    });
+  }, [session, navFlags]);
 
   if (!session) return null;
-
-  const navItems = getNavForRole(session.activeRole);
 
   const roleHeader = (
     <div className="shrink-0 border-b border-border px-4 py-4">

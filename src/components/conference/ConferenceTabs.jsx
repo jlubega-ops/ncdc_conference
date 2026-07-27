@@ -15,6 +15,7 @@ import {
 } from "@/lib/conferences/utils";
 import { ConferenceImage } from "@/components/ConferenceImage";
 import { OnlineStreamSection } from "@/components/conference/OnlineStreamSection";
+import { BreakoutRoomsSection } from "@/components/conference/BreakoutRoomsSection";
 import { isCfpOpen, isRegistrableConference, allowsPublicRegistration } from "@/lib/conferences/registrable";
 import { canViewConferenceContent } from "@/lib/conferences/visibility";
 import { normalizeConferenceDays, getZonedDateTimeParts } from "@/lib/attendance/utils";
@@ -23,6 +24,7 @@ import {
 } from "@/components/conference/ConferenceMemberContent";
 import { ConferenceAttendanceTab } from "@/components/conference/ConferenceAttendanceTab";
 import { ConferenceFeedbackTab } from "@/components/conference/ConferenceFeedbackTab";
+import { isPublicConferenceFeatureConfigured } from "@/lib/conferences/feature-visibility";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -91,6 +93,7 @@ function OverviewTab({ conference, registrationStatus }) {
         <p className="mt-3 text-sm text-muted-foreground">{conference.dateRange}</p>
       </section>
       <OnlineStreamSection conference={conference} registrationStatus={registrationStatus} />
+      <BreakoutRoomsSection conference={conference} registrationStatus={registrationStatus} />
     </div>
   );
 }
@@ -544,6 +547,7 @@ function RegistrationTab({ conference, registrationStatus, registration, isAuthe
       ) : null}
 
       <OnlineStreamSection conference={conference} registrationStatus={registrationStatus} />
+      <BreakoutRoomsSection conference={conference} registrationStatus={registrationStatus} />
 
       {canRegister ? (
         <Button variant="primary" href={`/conferences/${conference.slug}/register`}>
@@ -592,20 +596,20 @@ function FaqsTab({ conference }) {
 }
 
 function getVisibleTabs(conference, isAuthenticated, registrationStatus, memberContent) {
-  const programmeDays = normalizeProgrammeForDisplay(conference.programme);
-  const hasSpeakers =
-    Array.isArray(conference.speakers) && conference.speakers.length > 0;
   const approved = isAuthenticated && registrationStatus === "CONFIRMED";
   const hasMemberMaterials = Boolean(memberContent?.hasAny);
 
   return tabs.filter((tab) => {
+    // First gate: feature must be configured on the conference.
+    if (!isPublicConferenceFeatureConfigured(tab.id, conference)) {
+      // Registered attendees still need the registration tab for status / payment.
+      if (tab.id === "registration" && isAuthenticated && registrationStatus) {
+        return true;
+      }
+      return false;
+    }
+
     switch (tab.id) {
-      case "cfp":
-        return Boolean(conference.allowPaperSubmissions);
-      case "programme":
-        return programmeDays.length > 0 || hasSpeakers;
-      case "registration":
-        return allowsPublicRegistration(conference) || (isAuthenticated && Boolean(registrationStatus));
       case "attendance":
         return approved;
       case "certificate":
@@ -613,7 +617,6 @@ function getVisibleTabs(conference, isAuthenticated, registrationStatus, memberC
       case "feedback":
         return approved && haveConferenceDaysStarted(conference);
       case "materials":
-        // Only show when authenticated and at least one materials category has content.
         return isAuthenticated && hasMemberMaterials;
       default:
         return true;

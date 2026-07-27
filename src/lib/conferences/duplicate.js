@@ -80,6 +80,7 @@ export async function duplicateConference(conferenceId, createdById) {
       paymentDetails: source.paymentDetails ?? undefined,
       paidContentVisibility: source.paidContentVisibility ?? undefined,
       onlineStream: source.onlineStream ?? undefined,
+      breakoutRooms: source.breakoutRooms ?? undefined,
       contacts: source.contacts ?? undefined,
       publishedAt: null,
       createdById,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import {
   parseAttendeeCsv,
   validateAttendeeUploadRows,
@@ -8,10 +8,11 @@ import {
 
 export async function POST(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const conference = await prisma.conference.findUnique({ where: { id } });
   if (!conference) {

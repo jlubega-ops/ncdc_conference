@@ -36,7 +36,7 @@ export function ReportFilters({
           <select
             value={conferenceId}
             onChange={(e) => onConferenceChange(e.target.value)}
-            className="w-full min-w-[200px] rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:min-w-[200px] sm:w-auto"
           >
             {conferences.length > 1 ? (
               <option value="all">All in scope ({conferences.length})</option>
@@ -54,7 +54,7 @@ export function ReportFilters({
             <select
               value={period}
               onChange={(e) => onPeriodChange(e.target.value)}
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="all">All time</option>
               <option value="30">Last 30 days</option>
@@ -68,7 +68,7 @@ export function ReportFilters({
             <select
               value={registrationStatus}
               onChange={(e) => onRegistrationStatusChange(e.target.value)}
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
             >
               <option value="all">All statuses</option>
               <option value="CONFIRMED">Approved only</option>

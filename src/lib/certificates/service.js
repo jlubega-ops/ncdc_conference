@@ -34,7 +34,9 @@ async function getRegistrationContext(userId, slug) {
     },
     include: {
       conference: true,
-      user: true,
+      user: {
+        select: { id: true, email: true, name: true, profileData: true },
+      },
     },
   });
 

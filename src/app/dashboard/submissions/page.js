@@ -1,5 +1,6 @@
 import { ConferenceAdminPicker } from "@/components/dashboard/ConferenceAdminPicker";
 import { requireConferenceManagerPage } from "@/lib/auth/guards";
+import { filterConferencesForAdminTab } from "@/lib/conferences/feature-visibility";
 import { getAdminConferences } from "@/lib/conferences/service";
 
 export const metadata = {
@@ -8,7 +9,10 @@ export const metadata = {
 
 export default async function PaperSubmissionsPage() {
   const session = await requireConferenceManagerPage("/dashboard/submissions");
-  const conferences = await getAdminConferences(session);
+  const conferences = filterConferencesForAdminTab(
+    await getAdminConferences(session),
+    "submissions",
+  );
 
   return (
     <ConferenceAdminPicker

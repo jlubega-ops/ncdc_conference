@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
 import { buildProfilePayload, getProfileFromUser } from "@/lib/users/profile";
 import { deleteUserIfOrphanAttendee } from "@/lib/users/orphan-attendee";
@@ -25,10 +25,11 @@ async function loadRegistration(conferenceId, registrationId) {
 
 export async function PATCH(request, { params }) {
   const { id, registrationId } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   let body;
   try {
@@ -109,10 +110,11 @@ export async function PATCH(request, { params }) {
 
 export async function DELETE(request, { params }) {
   const { id, registrationId } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   let body = {};
   try {

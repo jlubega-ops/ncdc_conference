@@ -178,45 +178,68 @@ async function buildConferenceAdminOverview(session) {
               : { id: { in: managedIds } },
           orderBy: { startDate: "desc" },
           take: 12,
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            cardImage: true,
+            startDate: true,
+            endDate: true,
+            conferenceDays: true,
+            publicationStatus: true,
+            lifecycleStatus: true,
+          },
         })
       : [];
 
   const ids = conferences.map((c) => c.id);
-  const [regs, subs, feedbackCount] = await Promise.all([
-    registrationCounts(ids),
-    submissionCounts(ids),
-    ids.length
-      ? prisma.conferenceFeedback.count({ where: { conferenceId: { in: ids } } })
-      : 0,
-  ]);
+  const [regs, subs, feedbackCount, pendingRegsByConf, pendingSubsByConf] =
+    await Promise.all([
+      registrationCounts(ids),
+      submissionCounts(ids),
+      ids.length
+        ? prisma.conferenceFeedback.count({ where: { conferenceId: { in: ids } } })
+        : 0,
+      ids.length
+        ? prisma.conferenceRegistration.groupBy({
+            by: ["conferenceId"],
+            where: { conferenceId: { in: ids }, status: "PENDING" },
+            _count: { _all: true },
+          })
+        : [],
+      ids.length
+        ? prisma.paperSubmission.groupBy({
+            by: ["conferenceId"],
+            where: {
+              conferenceId: { in: ids },
+              status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+            },
+            _count: { _all: true },
+          })
+        : [],
+    ]);
 
-  const conferenceCards = await Promise.all(
-    conferences.map(async (row) => {
-      const mapped = mapConferenceForUi(row);
-      const [pendingReg, pendingSub] = await Promise.all([
-        prisma.conferenceRegistration.count({
-          where: { conferenceId: row.id, status: "PENDING" },
-        }),
-        prisma.paperSubmission.count({
-          where: {
-            conferenceId: row.id,
-            status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
-          },
-        }),
-      ]);
-      return {
-        id: mapped.id,
-        slug: mapped.slug,
-        title: mapped.title,
-        cardImage: mapped.cardImage,
-        dateRange: mapped.dateRange,
-        publicationStatus: mapped.publicationStatus,
-        pendingRegistrations: pendingReg,
-        pendingSubmissions: pendingSub,
-        href: `/dashboard/manage/${mapped.id}`,
-      };
-    }),
+  const pendingRegMap = Object.fromEntries(
+    pendingRegsByConf.map((r) => [r.conferenceId, r._count._all]),
   );
+  const pendingSubMap = Object.fromEntries(
+    pendingSubsByConf.map((r) => [r.conferenceId, r._count._all]),
+  );
+
+  const conferenceCards = conferences.map((row) => {
+    const mapped = mapConferenceForUi(row);
+    return {
+      id: mapped.id,
+      slug: mapped.slug,
+      title: mapped.title,
+      cardImage: mapped.cardImage,
+      dateRange: mapped.dateRange,
+      publicationStatus: mapped.publicationStatus,
+      pendingRegistrations: pendingRegMap[row.id] ?? 0,
+      pendingSubmissions: pendingSubMap[row.id] ?? 0,
+      href: `/dashboard/manage/${mapped.id}`,
+    };
+  });
 
   const attention = conferenceCards
     .filter((c) => c.pendingRegistrations > 0 || c.pendingSubmissions > 0)

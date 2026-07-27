@@ -15,6 +15,7 @@ import {
   normalizeOnlineStream,
   normalizePaymentDetails,
   normalizeSpeaker,
+  normalizeBreakoutRooms,
 } from "@/lib/conferences/utils";
 import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
 import { normalizeGiftsSettings, applyGiftCategoryAvailability } from "@/lib/gifts/settings";
@@ -132,6 +133,7 @@ export function mapConferenceForUi(conference) {
     paymentDetails: normalizePaymentDetails(conference.paymentDetails),
     paidContentVisibility: normalizePaidContentVisibility(conference.paidContentVisibility),
     onlineStream: normalizeOnlineStream(conference.onlineStream),
+    breakoutRooms: normalizeBreakoutRooms(conference.breakoutRooms),
     contacts: normalizeContacts(conference.contacts),
     publicationStatus: conference.publicationStatus,
     publishedAt: conference.publishedAt,

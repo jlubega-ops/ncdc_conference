@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import {
   getConferenceSpeakers,
   updateConferenceSpeakers,
@@ -9,10 +9,11 @@ import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const speakers = await getConferenceSpeakers(id);
   return NextResponse.json({ speakers });
@@ -20,10 +21,11 @@ export async function GET(_request, { params }) {
 
 export async function PATCH(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const body = await request.json();

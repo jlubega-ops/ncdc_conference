@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import {
   createConferencePresentation,
   deleteConferencePresentation,
@@ -13,10 +13,11 @@ export const runtime = "nodejs";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const [presentations, conferenceDays] = await Promise.all([
     listConferencePresentations(id),
@@ -27,10 +28,11 @@ export async function GET(_request, { params }) {
 
 export async function POST(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const form = await request.formData();
@@ -53,10 +55,11 @@ export async function POST(request, { params }) {
 
 export async function DELETE(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const presentationId = new URL(request.url).searchParams.get("presentationId");
   if (!presentationId) {

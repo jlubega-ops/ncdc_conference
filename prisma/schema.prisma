@@ -98,6 +98,7 @@ model UserRole {
 
   @@unique([userId, role, conferenceId])
   @@index([userId])
+  @@index([conferenceId, role])
   @@map("user_roles")
 }
 
@@ -160,6 +161,8 @@ model Conference {
   paymentDetails       Json?
   paidContentVisibility Json?
   onlineStream         Json?
+  /// { allowed: boolean, rooms: [{ id, platform, topic, link, description }] }
+  breakoutRooms        Json?
   contacts             Json?
   publishedAt          DateTime?
   createdById          String?
@@ -181,6 +184,7 @@ model Conference {
   @@index([publicationStatus])
   @@index([featured])
   @@index([startDate])
+  @@index([updatedAt])
   @@map("conferences")
 }
 
@@ -226,7 +230,8 @@ model ConferenceRegistration {
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conferenceId, userId])
-  @@index([conferenceId])
+  @@index([conferenceId, status])
+  @@index([userId])
   @@map("conference_registrations")
 }
 
@@ -292,9 +297,10 @@ model PaperSubmission {
   user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignedReviewer User?      @relation("PaperAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
 
-  @@index([conferenceId])
+  @@index([conferenceId, status])
   @@index([userId])
   @@index([assignedReviewerId])
+  @@index([reviewedById])
   @@map("paper_submissions")
 }
 

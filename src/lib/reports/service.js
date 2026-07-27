@@ -1,8 +1,25 @@
 import { prisma } from "@/lib/prisma";
-import { countAttendanceMarks, groupAttendanceByUser } from "@/lib/attendance/db";
 import {
+  countAttendanceMarks,
+  findAttendanceMarks,
+  groupAttendanceByUser,
+} from "@/lib/attendance/db";
+import {
+  conferenceAllowsPaperSubmissions,
+  conferenceHasAttendance,
+  conferenceHasFeedback,
+  conferenceHasGifts,
+  conferenceManagesRegistrations,
+} from "@/lib/conferences/feature-visibility";
+import { normalizeBreakoutRooms, normalizeOnlineStream } from "@/lib/conferences/utils";
+import {
+  aggregateAttendanceByDay,
+  aggregateCertificates,
   aggregateFeedback,
+  aggregateGifts,
+  aggregateOnlineConfig,
   aggregatePapers,
+  aggregateRegistrationModes,
   aggregateRegistrations,
   buildRegistrationTrend,
 } from "@/lib/reports/aggregate";
@@ -24,21 +41,12 @@ export async function buildReport(session, filters = {}) {
 
   const role = session.activeRole;
   const isReviewer = role === "REVIEWER";
-  const conferenceFilter = conferenceIds.length ? { conferenceId: { in: conferenceIds } } : { conferenceId: "none" };
+  const conferenceFilter = conferenceIds.length
+    ? { conferenceId: { in: conferenceIds } }
+    : { conferenceId: "none" };
 
   if (!conferenceIds.length) {
-    return {
-      role,
-      filters: { conferenceId: "all", period, registrationStatus },
-      conferences: options,
-      summary: [],
-      sections: { registrations: false, papers: false, feedback: false, attendance: false, reviewer: isReviewer },
-      registrations: null,
-      papers: null,
-      feedback: null,
-      attendance: null,
-      reviewer: isReviewer ? { assigned: 0, byStatus: [], reviewedByYou: 0, conferences: 0 } : null,
-    };
+    return emptyReport(role, options, filters, isReviewer);
   }
 
   const periodCutoff =
@@ -48,38 +56,108 @@ export async function buildReport(session, filters = {}) {
     return buildReviewerReport(session, conferenceIds, options, filters);
   }
 
-  const [registrations, papers, feedback, attendanceRows, conferenceCount] = await Promise.all([
-    prisma.conferenceRegistration.findMany({
-      where: conferenceFilter,
-      select: {
-        status: true,
-        formData: true,
-        registeredAt: true,
-        paymentStatus: true,
-      },
-    }),
-    prisma.paperSubmission.findMany({
-      where: conferenceFilter,
-      select: {
-        status: true,
-        isFinalApproved: true,
-        submittedAt: true,
-      },
-    }),
-    prisma.conferenceFeedback.findMany({
-      where: conferenceFilter,
-      select: { rating: true, createdAt: true },
-    }),
-    groupAttendanceByUser({ conferenceId: { in: conferenceIds } }),
-    prisma.conference.count({ where: { id: { in: conferenceIds } } }),
-  ]);
-
-  const attendanceTotal = await countAttendanceMarks({
-    conferenceId: { in: conferenceIds },
+  const conferences = await prisma.conference.findMany({
+    where: { id: { in: conferenceIds } },
+    select: {
+      id: true,
+      title: true,
+      registrationMode: true,
+      allowPaperSubmissions: true,
+      conferenceDays: true,
+      giftsSettings: true,
+      onlineStream: true,
+      breakoutRooms: true,
+      publicationStatus: true,
+    },
   });
 
-  const regAgg = aggregateRegistrations(registrations, { statusFilter: registrationStatus });
-  if (periodDays > 0) {
+  const showRegistrations = conferences.some(conferenceManagesRegistrations);
+  const showPapers = conferences.some(conferenceAllowsPaperSubmissions);
+  const showFeedback = conferences.some(conferenceHasFeedback);
+  const showAttendance = conferences.some(conferenceHasAttendance);
+  const showGifts = conferences.some(conferenceHasGifts);
+  const showOnline =
+    conferences.some((c) => normalizeOnlineStream(c.onlineStream).length > 0) ||
+    conferences.some((c) => {
+      const rooms = normalizeBreakoutRooms(c.breakoutRooms);
+      return rooms.allowed && rooms.rooms.length > 0;
+    });
+
+  const paperConferenceIds = conferences
+    .filter(conferenceAllowsPaperSubmissions)
+    .map((c) => c.id);
+  const registrationConferenceIds = conferences
+    .filter(conferenceManagesRegistrations)
+    .map((c) => c.id);
+  const giftConferenceIds = conferences.filter(conferenceHasGifts).map((c) => c.id);
+
+  const [
+    registrations,
+    papers,
+    feedback,
+    attendanceRows,
+    attendanceMarks,
+    certificates,
+    giftIssuances,
+  ] = await Promise.all([
+    showRegistrations
+      ? prisma.conferenceRegistration.findMany({
+          where: { conferenceId: { in: registrationConferenceIds } },
+          select: {
+            status: true,
+            formData: true,
+            registeredAt: true,
+            paymentStatus: true,
+          },
+        })
+      : Promise.resolve([]),
+    showPapers
+      ? prisma.paperSubmission.findMany({
+          where: { conferenceId: { in: paperConferenceIds } },
+          select: {
+            status: true,
+            isFinalApproved: true,
+            submittedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    showFeedback
+      ? prisma.conferenceFeedback.findMany({
+          where: conferenceFilter,
+          select: { rating: true, createdAt: true, feedbackType: true },
+        })
+      : Promise.resolve([]),
+    showAttendance
+      ? groupAttendanceByUser({ conferenceId: { in: conferenceIds } })
+      : Promise.resolve([]),
+    showAttendance
+      ? findAttendanceMarks(
+          { conferenceId: { in: conferenceIds } },
+          { select: { dayDate: true } },
+        )
+      : Promise.resolve([]),
+    showAttendance
+      ? prisma.conferenceCertificate.findMany({
+          where: conferenceFilter,
+          select: { emailedAt: true },
+        })
+      : Promise.resolve([]),
+    showGifts
+      ? prisma.conferenceGiftIssuance.findMany({
+          where: { conferenceId: { in: giftConferenceIds } },
+          select: { conferenceId: true, category: true, items: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const attendanceTotal = showAttendance
+    ? await countAttendanceMarks({ conferenceId: { in: conferenceIds } })
+    : 0;
+
+  const regAgg = showRegistrations
+    ? aggregateRegistrations(registrations, { statusFilter: registrationStatus })
+    : null;
+  if (regAgg && periodDays > 0) {
     regAgg.trend = buildRegistrationTrend(
       registrations.filter((r) => {
         if (registrationStatus !== "all" && r.status !== registrationStatus) return false;
@@ -89,8 +167,13 @@ export async function buildReport(session, filters = {}) {
     );
   }
 
-  const papersAgg = aggregatePapers(papers);
-  const feedbackAgg = aggregateFeedback(feedback);
+  const papersAgg = showPapers ? aggregatePapers(papers) : null;
+  const feedbackAgg = showFeedback ? aggregateFeedback(feedback) : null;
+  const giftsAgg = showGifts ? aggregateGifts(conferences, giftIssuances) : null;
+  const onlineAgg = showOnline ? aggregateOnlineConfig(conferences) : null;
+  const registrationModes = aggregateRegistrationModes(conferences);
+  const certificatesAgg = showAttendance ? aggregateCertificates(certificates) : null;
+  const attendanceByDay = showAttendance ? aggregateAttendanceByDay(attendanceMarks) : [];
 
   const confirmed = registrations.filter((r) => r.status === "CONFIRMED").length;
   const pending = registrations.filter((r) => r.status === "PENDING").length;
@@ -102,6 +185,38 @@ export async function buildReport(session, filters = {}) {
         ? options[0]?.title
         : `All conferences (${conferenceIds.length})`;
 
+  /** @type {Array<{ label: string; value: number; icon: string }>} */
+  const summary = [
+    { label: "Conferences in scope", value: conferences.length, icon: "calendar" },
+  ];
+  if (showRegistrations) {
+    summary.push(
+      { label: "Total registrations", value: registrations.length, icon: "users" },
+      { label: "Approved attendees", value: confirmed, icon: "check" },
+      { label: "Pending applications", value: pending, icon: "clock" },
+    );
+  }
+  if (showPapers) {
+    summary.push({ label: "Paper submissions", value: papers.length, icon: "file" });
+  }
+  if (showFeedback) {
+    summary.push({ label: "Evaluations received", value: feedback.length, icon: "message" });
+  }
+  if (showAttendance) {
+    summary.push(
+      { label: "Attendance check-ins", value: attendanceTotal, icon: "clipboard" },
+      { label: "Unique attendees marked", value: attendanceRows.length, icon: "usercheck" },
+      { label: "Certificates issued", value: certificatesAgg?.issued ?? 0, icon: "award" },
+    );
+  }
+  if (showGifts) {
+    summary.push({
+      label: "Gift issuances",
+      value: giftsAgg?.issuances ?? 0,
+      icon: "gift",
+    });
+  }
+
   return {
     role,
     filters: {
@@ -111,35 +226,73 @@ export async function buildReport(session, filters = {}) {
     },
     conferenceTitle: selectedTitle,
     conferences: options,
-    summary: [
-      { label: "Conferences in scope", value: conferenceCount, icon: "calendar" },
-      { label: "Total registrations", value: registrations.length, icon: "users" },
-      { label: "Approved attendees", value: confirmed, icon: "check" },
-      { label: "Pending applications", value: pending, icon: "clock" },
-      { label: "Paper submissions", value: papers.length, icon: "file" },
-      { label: "Evaluations received", value: feedback.length, icon: "message" },
-      { label: "Attendance check-ins", value: attendanceTotal, icon: "clipboard" },
-      {
-        label: "Unique attendees marked",
-        value: attendanceRows.length,
-        icon: "usercheck",
-      },
-    ],
+    summary,
     sections: {
-      registrations: true,
-      papers: true,
-      feedback: true,
-      attendance: true,
+      overview: true,
+      registrations: showRegistrations,
+      papers: showPapers,
+      feedback: showFeedback,
+      attendance: showAttendance,
+      gifts: showGifts,
+      online: showOnline,
       reviewer: false,
+    },
+    overview: {
+      registrationModes,
+      published: conferences.filter((c) => c.publicationStatus === "PUBLISHED").length,
+      drafts: conferences.filter((c) => c.publicationStatus !== "PUBLISHED").length,
+      withPapers: paperConferenceIds.length,
+      withGifts: giftConferenceIds.length,
+      withStreams: onlineAgg?.withStreams ?? 0,
+      withBreakouts: onlineAgg?.withBreakouts ?? 0,
     },
     registrations: regAgg,
     papers: papersAgg,
     feedback: feedbackAgg,
-    attendance: {
-      totalCheckIns: attendanceTotal,
-      uniqueAttendees: attendanceRows.length,
-    },
+    attendance: showAttendance
+      ? {
+          totalCheckIns: attendanceTotal,
+          uniqueAttendees: attendanceRows.length,
+          byDay: attendanceByDay,
+          certificates: certificatesAgg,
+        }
+      : null,
+    gifts: giftsAgg,
+    online: onlineAgg,
     reviewer: null,
+  };
+}
+
+function emptyReport(role, options, filters, isReviewer) {
+  return {
+    role,
+    filters: {
+      conferenceId: filters.conferenceId ?? "all",
+      period: filters.period ?? "all",
+      registrationStatus: filters.registrationStatus ?? "all",
+    },
+    conferences: options,
+    summary: [],
+    sections: {
+      overview: false,
+      registrations: false,
+      papers: false,
+      feedback: false,
+      attendance: false,
+      gifts: false,
+      online: false,
+      reviewer: isReviewer,
+    },
+    overview: null,
+    registrations: null,
+    papers: null,
+    feedback: null,
+    attendance: null,
+    gifts: null,
+    online: null,
+    reviewer: isReviewer
+      ? { assigned: 0, byStatus: [], reviewedByYou: 0, conferences: 0 }
+      : null,
   };
 }
 
@@ -152,42 +305,82 @@ export async function buildReport(session, filters = {}) {
 async function buildReviewerReport(session, conferenceIds, options, filters) {
   const conferenceFilter = { conferenceId: { in: conferenceIds } };
 
+  const conferences = await prisma.conference.findMany({
+    where: { id: { in: conferenceIds } },
+    select: {
+      id: true,
+      allowPaperSubmissions: true,
+      conferenceDays: true,
+    },
+  });
+  const showPapers = conferences.some(conferenceAllowsPaperSubmissions);
+  const showFeedback = conferences.some(conferenceHasFeedback);
+
   const [assignedPapers, reviewedCount, feedback] = await Promise.all([
-    prisma.paperSubmission.findMany({
-      where: {
-        ...conferenceFilter,
-        assignedReviewerId: session.user.id,
-      },
-      select: {
-        status: true,
-        isFinalApproved: true,
-        conferenceId: true,
-        submittedAt: true,
-      },
-    }),
-    prisma.paperSubmission.count({
-      where: {
-        ...conferenceFilter,
-        reviewedById: session.user.id,
-      },
-    }),
-    prisma.conferenceFeedback.findMany({
-      where: conferenceFilter,
-      select: { rating: true },
-    }),
+    showPapers
+      ? prisma.paperSubmission.findMany({
+          where: {
+            ...conferenceFilter,
+            assignedReviewerId: session.user.id,
+          },
+          select: {
+            status: true,
+            isFinalApproved: true,
+            conferenceId: true,
+            submittedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    showPapers
+      ? prisma.paperSubmission.count({
+          where: {
+            ...conferenceFilter,
+            reviewedById: session.user.id,
+          },
+        })
+      : Promise.resolve(0),
+    showFeedback
+      ? prisma.conferenceFeedback.findMany({
+          where: conferenceFilter,
+          select: { rating: true, feedbackType: true },
+        })
+      : Promise.resolve([]),
   ]);
 
-  const papersAgg = aggregatePapers(assignedPapers);
-  const feedbackAgg = aggregateFeedback(feedback);
+  const papersAgg = showPapers ? aggregatePapers(assignedPapers) : null;
+  const feedbackAgg = showFeedback ? aggregateFeedback(feedback) : null;
 
   const needsAction = assignedPapers.filter(
-    (p) => p.status === "SUBMITTED" || p.status === "UNDER_REVIEW" || p.status === "NEEDS_REVISION",
+    (p) =>
+      p.status === "SUBMITTED" ||
+      p.status === "UNDER_REVIEW" ||
+      p.status === "NEEDS_REVISION",
   ).length;
 
   const selectedTitle =
     filters.conferenceId && filters.conferenceId !== "all"
       ? options.find((c) => c.id === filters.conferenceId)?.title
       : `All assigned conferences (${conferenceIds.length})`;
+
+  /** @type {Array<{ label: string; value: number; icon: string }>} */
+  const summary = [
+    { label: "Conferences", value: conferenceIds.length, icon: "calendar" },
+  ];
+  if (showPapers) {
+    summary.push(
+      { label: "Papers assigned to you", value: assignedPapers.length, icon: "file" },
+      { label: "Awaiting your review", value: needsAction, icon: "clock" },
+      { label: "Reviews you completed", value: reviewedCount, icon: "check" },
+      { label: "Final approvals", value: papersAgg?.finalApproved ?? 0, icon: "award" },
+    );
+  }
+  if (showFeedback) {
+    summary.push({
+      label: "Conference evaluations",
+      value: feedback.length,
+      icon: "message",
+    });
+  }
 
   return {
     role: "REVIEWER",
@@ -198,30 +391,31 @@ async function buildReviewerReport(session, conferenceIds, options, filters) {
     },
     conferenceTitle: selectedTitle,
     conferences: options,
-    summary: [
-      { label: "Conferences", value: conferenceIds.length, icon: "calendar" },
-      { label: "Papers assigned to you", value: assignedPapers.length, icon: "file" },
-      { label: "Awaiting your review", value: needsAction, icon: "clock" },
-      { label: "Reviews you completed", value: reviewedCount, icon: "check" },
-      { label: "Final approvals", value: papersAgg.finalApproved, icon: "award" },
-      { label: "Conference evaluations", value: feedback.length, icon: "message" },
-    ],
+    summary,
     sections: {
+      overview: false,
       registrations: false,
-      papers: true,
-      feedback: true,
+      papers: showPapers,
+      feedback: showFeedback,
       attendance: false,
-      reviewer: true,
+      gifts: false,
+      online: false,
+      reviewer: showPapers,
     },
+    overview: null,
     registrations: null,
     papers: papersAgg,
     feedback: feedbackAgg,
     attendance: null,
-    reviewer: {
-      assigned: assignedPapers.length,
-      reviewedByYou: reviewedCount,
-      needsAction,
-      byStatus: papersAgg.byStatus,
-    },
+    gifts: null,
+    online: null,
+    reviewer: showPapers
+      ? {
+          assigned: assignedPapers.length,
+          reviewedByYou: reviewedCount,
+          needsAction,
+          byStatus: papersAgg?.byStatus ?? [],
+        }
+      : null,
   };
 }

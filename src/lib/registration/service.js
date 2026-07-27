@@ -314,7 +314,12 @@ export async function reviewRegistration({
 export async function resendAccountActivation({ registrationId, conferenceId }) {
   const registration = await prisma.conferenceRegistration.findFirst({
     where: { id: registrationId, conferenceId },
-    include: { user: true, conference: true },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, profileData: true },
+      },
+      conference: true,
+    },
   });
 
   if (!registration) throw new Error("Registration not found.");
@@ -352,7 +357,12 @@ export async function sendAccessCodesBulk({ conferenceId, registrationIds }) {
       conferenceId,
       id: { in: ids },
     },
-    include: { user: true, conference: true },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, profileData: true },
+      },
+      conference: true,
+    },
   });
 
   const byId = new Map(rows.map((r) => [r.id, r]));

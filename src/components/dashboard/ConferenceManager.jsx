@@ -42,6 +42,8 @@ import { normalizePaidContentVisibility } from "@/lib/conferences/visibility";
 import {
   createFaqId,
   createSpeakerId,
+  emptyBreakoutRoomEntry,
+  emptyBreakoutRooms,
   emptyContacts,
   emptyOnlineStream,
   emptyOnlineStreamEntry,
@@ -49,6 +51,7 @@ import {
   formatProgrammeDayLabel,
   formatProgrammeTimeSlot,
   isRichTextEmpty,
+  normalizeBreakoutRooms,
   normalizeContacts,
   normalizeFaq,
   normalizeOnlineStream,
@@ -110,6 +113,7 @@ function emptyConference() {
     paymentDetails: emptyPaymentDetails(),
     paidContentVisibility: { ...DEFAULT_PAID_VISIBILITY },
     onlineStream: emptyOnlineStream(),
+    breakoutRooms: emptyBreakoutRooms(),
     contacts: emptyContacts(),
   };
 }
@@ -124,6 +128,7 @@ function mapConferenceFormExtras(conf) {
     paymentDetails: normalizePaymentDetails(conf.paymentDetails),
     paidContentVisibility: normalizePaidContentVisibility(conf.paidContentVisibility),
     onlineStream: normalizeOnlineStream(conf.onlineStream, { forEditor: true }),
+    breakoutRooms: normalizeBreakoutRooms(conf.breakoutRooms, { forEditor: true }),
     contacts: normalizeContacts(conf.contacts),
   };
 }
@@ -210,6 +215,7 @@ function normalizeForSubmit(form, publicationStatusOverride) {
       ? normalizePaidContentVisibility(form.paidContentVisibility)
       : null,
     onlineStream: normalizeOnlineStream(form.onlineStream, { forEditor: true }),
+    breakoutRooms: normalizeBreakoutRooms(form.breakoutRooms, { forEditor: true }),
     contacts: normalizeContacts(form.contacts),
     feedbackSettings: normalizeFeedbackSettings(form.feedbackSettings),
     giftsSettings: applyGiftCategoryAvailability(
@@ -288,7 +294,8 @@ function fieldBelongsToSection(key, sectionId) {
         "registrationCloseAt",
         "conferenceDays",
       ].includes(key) ||
-      key.startsWith("onlineStream.")
+      key.startsWith("onlineStream.") ||
+      key.startsWith("breakoutRooms.")
     );
   }
   if (sectionId === "registration") {
@@ -917,6 +924,41 @@ export function ConferenceManager({ conferences }) {
     const streams = normalizeOnlineStream(editing.onlineStream, { forEditor: true });
     const next = streams.filter((_, i) => i !== index);
     onField("onlineStream", next.length > 0 ? next : [emptyOnlineStreamEntry()]);
+  }
+
+  function updateBreakoutRoomsAllowed(allowed) {
+    const current = normalizeBreakoutRooms(editing.breakoutRooms, { forEditor: true });
+    onField("breakoutRooms", {
+      ...current,
+      allowed: Boolean(allowed),
+      rooms:
+        current.rooms.length > 0 ? current.rooms : [emptyBreakoutRoomEntry()],
+    });
+  }
+
+  function updateBreakoutRoomEntry(index, field, value) {
+    const current = normalizeBreakoutRooms(editing.breakoutRooms, { forEditor: true });
+    const rooms = [...current.rooms];
+    rooms[index] = { ...rooms[index], [field]: value };
+    onField("breakoutRooms", { ...current, rooms });
+  }
+
+  function addBreakoutRoomEntry() {
+    const current = normalizeBreakoutRooms(editing.breakoutRooms, { forEditor: true });
+    onField("breakoutRooms", {
+      ...current,
+      allowed: true,
+      rooms: [...current.rooms, emptyBreakoutRoomEntry()],
+    });
+  }
+
+  function removeBreakoutRoomEntry(index) {
+    const current = normalizeBreakoutRooms(editing.breakoutRooms, { forEditor: true });
+    const rooms = current.rooms.filter((_, i) => i !== index);
+    onField("breakoutRooms", {
+      ...current,
+      rooms: rooms.length > 0 ? rooms : [emptyBreakoutRoomEntry()],
+    });
   }
 
   function updateContactField(field, value) {
@@ -1853,6 +1895,115 @@ export function ConferenceManager({ conferences }) {
                           ),
                         )}
                       </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-foreground">
+                            Breakout rooms
+                          </h4>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Optional parallel session rooms (Zoom, Teams, etc.). Enable only when
+                            this conference uses breakout rooms. Visibility follows the same online
+                            links rules as streams when payment is required.
+                          </p>
+                        </div>
+                      </div>
+                      <label className="mt-4 flex items-start gap-3 rounded-md border border-border px-3 py-3 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-border text-primary"
+                          checked={Boolean(
+                            normalizeBreakoutRooms(editing.breakoutRooms, { forEditor: true })
+                              .allowed,
+                          )}
+                          onChange={(e) => updateBreakoutRoomsAllowed(e.target.checked)}
+                        />
+                        <span>
+                          <span className="font-medium">This conference has breakout rooms</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            When enabled, add one or more rooms with platform, topic, and link.
+                          </span>
+                        </span>
+                      </label>
+                      {normalizeBreakoutRooms(editing.breakoutRooms, { forEditor: true }).allowed ? (
+                        <div className="mt-4 space-y-4">
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              icon={Plus}
+                              onClick={addBreakoutRoomEntry}
+                            >
+                              Add breakout room
+                            </Button>
+                          </div>
+                          {normalizeBreakoutRooms(editing.breakoutRooms, {
+                            forEditor: true,
+                          }).rooms.map((room, index) => (
+                            <div
+                              key={room.id}
+                              className="space-y-3 rounded-md border border-border p-4"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  Room {index + 1}
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  icon={Trash2}
+                                  onClick={() => removeBreakoutRoomEntry(index)}
+                                  aria-label={`Remove breakout room ${index + 1}`}
+                                />
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <Input
+                                  label="Platform name"
+                                  requiredMark
+                                  value={room.platform}
+                                  onChange={(e) =>
+                                    updateBreakoutRoomEntry(index, "platform", e.target.value)
+                                  }
+                                  placeholder="e.g. Zoom, Microsoft Teams"
+                                />
+                                <Input
+                                  label="Topic"
+                                  requiredMark
+                                  value={room.topic}
+                                  onChange={(e) =>
+                                    updateBreakoutRoomEntry(index, "topic", e.target.value)
+                                  }
+                                  placeholder="Session or room topic"
+                                />
+                              </div>
+                              <Input
+                                label="Link"
+                                requiredMark
+                                value={room.link}
+                                onChange={(e) =>
+                                  updateBreakoutRoomEntry(index, "link", e.target.value)
+                                }
+                                placeholder="https://..."
+                              />
+                              <div>
+                                <FieldLabel>Description (optional)</FieldLabel>
+                                <textarea
+                                  className="min-h-20 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                                  value={room.description}
+                                  onChange={(e) =>
+                                    updateBreakoutRoomEntry(index, "description", e.target.value)
+                                  }
+                                  placeholder="Meeting ID, passcode, or other joining notes"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}

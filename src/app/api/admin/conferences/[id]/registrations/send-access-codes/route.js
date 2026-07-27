@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import { sendAccessCodesBulk } from "@/lib/registration/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request, { params }) {
   const { id: conferenceId } = await params;
-  const session = await requireConferenceAccess(conferenceId);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(conferenceId);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   let body;
   try {

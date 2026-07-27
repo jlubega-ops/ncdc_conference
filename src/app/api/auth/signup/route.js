@@ -4,9 +4,19 @@ import { getConferenceYear, isRegistrableConference } from "@/lib/conferences/re
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
 
 export async function POST(request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limit = checkRateLimit(`signup:${ip}`, { limit: 10, windowMs: 60_000 });
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Try again shortly." },
+        { status: 429 },
+      );
+    }
+
     const body = await request.json();
     const email = (body.email ?? "").trim().toLowerCase();
     const name = (body.name ?? "").trim() || null;

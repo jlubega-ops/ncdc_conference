@@ -6,7 +6,7 @@ import { mapConferenceForUi } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
-import { sanitizeOnlineStreamForSave, slugify } from "@/lib/conferences/utils";
+import { sanitizeOnlineStreamForSave, sanitizeBreakoutRoomsForSave, slugify } from "@/lib/conferences/utils";
 import { generateConferenceReference, normalizeOrganiserShortName } from "@/lib/conferences/reference";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
@@ -126,6 +126,7 @@ function buildConferencePayload(input, userId) {
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
     onlineStream: sanitizeOnlineStreamForSave(input.onlineStream),
+    breakoutRooms: sanitizeBreakoutRoomsForSave(input.breakoutRooms),
     contacts: input.contacts || null,
     publishedAt: publicationStatus === "PUBLISHED" ? new Date() : null,
     createdById: userId,

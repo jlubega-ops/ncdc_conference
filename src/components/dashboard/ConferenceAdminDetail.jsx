@@ -21,6 +21,7 @@ import { ConferenceAdminAttendanceTab } from "@/components/dashboard/admin-tabs/
 import { ConferenceAdminGiftsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminGiftsTab";
 import { ConferenceAdminAdminsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminAdminsTab";
 import { ConferenceAdminMaterialsHub } from "@/components/dashboard/admin-tabs/ConferenceAdminMaterialsHub";
+import { isAdminConferenceTabVisible } from "@/lib/conferences/feature-visibility";
 
 const BASE_TABS = [
   { id: "info", label: "Info", countKey: null },
@@ -39,7 +40,9 @@ const TAB_BACK_LINKS = {
   feedback: { href: "/dashboard/reviews", label: "Feedback" },
 };
 
-const VALID_TAB_IDS = new Set(BASE_TABS.map((t) => t.id));
+function getVisibleTabs(conference) {
+  return BASE_TABS.filter((tab) => isAdminConferenceTabVisible(tab.id, conference));
+}
 
 /**
  * @param {{ conference: any; canAssignAdmins?: boolean; initialTab?: string }} props
@@ -53,12 +56,13 @@ export function ConferenceAdminDetail({
   const searchParams = useSearchParams();
   const [conference, setConference] = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(
-    VALID_TAB_IDS.has(initialTab) ? initialTab : "info",
-  );
   const [stats, setStats] = useState(null);
 
-  const tabs = useMemo(() => BASE_TABS, []);
+  const tabs = useMemo(() => getVisibleTabs(conference), [conference]);
+  const validTabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
+  const [activeTab, setActiveTab] = useState(
+    validTabIds.has(initialTab) ? initialTab : (tabs[0]?.id ?? "info"),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -79,10 +83,16 @@ export function ConferenceAdminDetail({
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab && VALID_TAB_IDS.has(tab)) {
+    if (tab && validTabIds.has(tab)) {
       setActiveTab(tab);
     }
-  }, [searchParams]);
+  }, [searchParams, validTabIds]);
+
+  useEffect(() => {
+    if (!validTabIds.has(activeTab)) {
+      setActiveTab(tabs[0]?.id ?? "info");
+    }
+  }, [activeTab, tabs, validTabIds]);
 
   function selectTab(tabId) {
     setActiveTab(tabId);
@@ -158,7 +168,7 @@ export function ConferenceAdminDetail({
               {STATUS_LABELS[conference.status] ?? conference.status}
             </span>
           </div>
-          <h1 className="absolute bottom-4 left-4 right-4 text-2xl font-bold text-white sm:text-3xl">
+          <h1 className="absolute bottom-4 left-4 right-4 text-xl font-bold text-white sm:text-2xl lg:text-3xl">
             {conference.title}
           </h1>
         </div>
@@ -168,14 +178,24 @@ export function ConferenceAdminDetail({
             variant={isPublished ? "secondary" : "primary"}
             disabled={loading}
             onClick={togglePublication}
+            className="w-full sm:w-auto"
           >
             {isPublished ? "Unpublish" : "Publish"}
           </Button>
-          <Button variant="outline" icon={Pencil} href={`/dashboard/manage?edit=${conference.id}`}>
+          <Button
+            variant="outline"
+            icon={Pencil}
+            href={`/dashboard/manage?edit=${conference.id}`}
+            className="w-full sm:w-auto"
+          >
             Edit conference
           </Button>
           {isPublished ? (
-            <Button variant="ghost" href={`/conferences/${conference.slug}`}>
+            <Button
+              variant="ghost"
+              href={`/conferences/${conference.slug}`}
+              className="w-full sm:w-auto"
+            >
               View public page
             </Button>
           ) : null}

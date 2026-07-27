@@ -6,9 +6,19 @@ import { passwordResetEmail } from "@/lib/email/templates";
 import { getAppUrl } from "@/lib/email/config";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
 
 export async function POST(request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limit = checkRateLimit(`forgot:${ip}`, { limit: 8, windowMs: 60_000 });
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Try again shortly." },
+        { status: 429 },
+      );
+    }
+
     const { email } = await request.json();
     const normalized = email?.trim()?.toLowerCase();
 

@@ -14,7 +14,15 @@ const ACCESS_KEY_PATTERN = /^([A-Z0-9]{2,12})\/CONF(\d{4})\/([A-Z2-9]+)$/;
  * @param {string} fullKey
  */
 export function accessKeyLookupToken(fullKey) {
-  const secret = process.env.SESSION_SECRET || "ncdc-access-key-fallback";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET must be set (min 32 characters) in production");
+    }
+    return createHmac("sha256", "dev-only-session-secret-min-32-chars!!")
+      .update(String(fullKey || "").trim().toUpperCase())
+      .digest("hex");
+  }
   return createHmac("sha256", secret)
     .update(String(fullKey || "").trim().toUpperCase())
     .digest("hex");

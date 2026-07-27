@@ -211,6 +211,93 @@ export function sanitizeOnlineStreamForSave(raw) {
   );
 }
 
+export function emptyBreakoutRooms() {
+  return {
+    allowed: false,
+    rooms: [emptyBreakoutRoomEntry()],
+  };
+}
+
+/**
+ * @returns {{ id: string; platform: string; topic: string; link: string; description: string }}
+ */
+export function emptyBreakoutRoomEntry() {
+  return {
+    id: createBreakoutRoomId(),
+    platform: "",
+    topic: "",
+    link: "",
+    description: "",
+  };
+}
+
+function createBreakoutRoomId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `breakout-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Normalize breakout rooms to { allowed, rooms[] }.
+ * @param {unknown} raw
+ * @param {{ forEditor?: boolean }} [opts]
+ */
+export function normalizeBreakoutRooms(raw, opts = {}) {
+  const forEditor = Boolean(opts.forEditor);
+  const source =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? raw
+      : { allowed: false, rooms: Array.isArray(raw) ? raw : [] };
+  const allowed = Boolean(source.allowed);
+  const rooms = (Array.isArray(source.rooms) ? source.rooms : [])
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const platform = String(item.platform || item.name || "").trim();
+      const topic = String(item.topic || "").trim();
+      const link = String(item.link || item.url || "").trim();
+      const description = String(item.description || item.details || "").trim();
+      if (!forEditor && !platform && !topic && !link && !description) return null;
+      return {
+        id: String(item.id || "").trim() || createBreakoutRoomId(),
+        platform,
+        topic,
+        link,
+        description,
+      };
+    })
+    .filter(Boolean);
+
+  if (forEditor) {
+    return {
+      allowed,
+      rooms: rooms.length > 0 ? rooms : [emptyBreakoutRoomEntry()],
+    };
+  }
+
+  return {
+    allowed,
+    rooms: allowed ? rooms : [],
+  };
+}
+
+/**
+ * Persist only when allowed; drop blank room rows.
+ * @param {unknown} raw
+ */
+export function sanitizeBreakoutRoomsForSave(raw) {
+  const normalized = normalizeBreakoutRooms(raw, { forEditor: false });
+  if (!normalized.allowed) {
+    return { allowed: false, rooms: [] };
+  }
+  return {
+    allowed: true,
+    rooms: normalized.rooms.filter(
+      (room) => room.platform || room.topic || room.link || room.description,
+    ),
+  };
+}
+
 export function emptyContacts() {
   return {
     emails: [],

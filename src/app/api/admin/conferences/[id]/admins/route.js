@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isSuperadminUser } from "@/lib/auth/conference-access";
-import { requireConferenceAccess, requireSuperadminCapability } from "@/lib/auth/guards";
+import { authorizeConferenceAccess, requireSuperadminCapability } from "@/lib/auth/guards";
 import {
   assignConferenceAdmin,
   createAndAssignConferenceAdmin,
@@ -13,10 +13,11 @@ import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const admins = await listConferenceAdmins(id, session.user.id);
   return NextResponse.json({

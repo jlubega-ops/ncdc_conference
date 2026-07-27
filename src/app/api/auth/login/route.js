@@ -9,9 +9,19 @@ import {
 import { STAFF_ROLES } from "@/lib/auth/roles";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/auth/rate-limit";
 
 export async function POST(request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limit = checkRateLimit(`login:${ip}`, { limit: 10, windowMs: 60_000 });
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many sign-in attempts. Try again shortly." },
+        { status: 429 },
+      );
+    }
+
     const body = await request.json();
     const { email, password } = body;
 
@@ -23,6 +33,16 @@ export async function POST(request) {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const emailLimit = checkRateLimit(`login-email:${normalizedEmail}`, {
+      limit: 8,
+      windowMs: 60_000,
+    });
+    if (!emailLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many sign-in attempts. Try again shortly." },
+        { status: 429 },
+      );
+    }
 
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },

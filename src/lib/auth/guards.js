@@ -55,13 +55,31 @@ export async function requireReviewerPage(returnPath) {
 }
 
 /**
+ * Conference-scoped API access with distinct 401 vs 403.
  * @param {string} conferenceId
+ * @returns {Promise<{ ok: true, session: any } | { ok: false, status: 401|403, error: string, session?: null }>}
+ */
+export async function authorizeConferenceAccess(conferenceId) {
+  const session = await getCurrentSession();
+  if (!session) {
+    return { ok: false, status: 401, error: "Unauthorized", session: null };
+  }
+  if (!["SUPERADMIN", "CONFERENCE_ADMIN"].includes(session.activeRole)) {
+    return { ok: false, status: 403, error: "Forbidden", session: null };
+  }
+  if (!canManageConference(session, conferenceId)) {
+    return { ok: false, status: 403, error: "Forbidden", session: null };
+  }
+  return { ok: true, session };
+}
+
+/**
+ * @param {string} conferenceId
+ * @returns {Promise<any | null>}
  */
 export async function requireConferenceAccess(conferenceId) {
-  const session = await requireConferenceManager();
-  if (!session) return null;
-  if (!canManageConference(session, conferenceId)) return null;
-  return session;
+  const result = await authorizeConferenceAccess(conferenceId);
+  return result.ok ? result.session : null;
 }
 
 export async function requireSuperadmin() {

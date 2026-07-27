@@ -55,7 +55,7 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/admin/conferences/${conferenceId}/gifts`);
+      const res = await fetch(`/api/admin/conference-gifts/${conferenceId}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load gifts.");
       setData(json);
@@ -122,7 +122,7 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
       for (const [id, qty] of Object.entries(selectedItems)) {
         if (qty) items[id] = Number(qty);
       }
-      const res = await fetch(`/api/admin/conferences/${conferenceId}/gifts`, {
+      const res = await fetch(`/api/admin/conference-gifts/${conferenceId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,7 +144,7 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
   }
 
   function downloadExcel() {
-    window.open(`/api/admin/conferences/${conferenceId}/gifts?format=excel`, "_blank");
+    window.open(`/api/admin/conference-gifts/${conferenceId}?format=excel`, "_blank");
   }
 
   if (loading && !data) {

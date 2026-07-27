@@ -7,9 +7,11 @@ import {
   ClipboardCheck,
   Clock,
   FileText,
+  Gift,
   MessageSquare,
   UserCheck,
   Users,
+  Video,
 } from "lucide-react";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
@@ -24,6 +26,8 @@ const ICONS = {
   clipboard: ClipboardCheck,
   usercheck: UserCheck,
   award: Award,
+  gift: Gift,
+  video: Video,
 };
 
 /**

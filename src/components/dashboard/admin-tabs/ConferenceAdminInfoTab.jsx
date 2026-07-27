@@ -18,6 +18,7 @@ import {
   formatProgrammeTimeSlot,
   getSpeakersForDate,
   normalizeOnlineStream,
+  normalizeBreakoutRooms,
   normalizeProgrammeForDisplay,
 } from "@/lib/conferences/utils";
 
@@ -310,6 +311,48 @@ export function ConferenceAdminInfoTab({ conference }) {
           </ul>
         </div>
       ) : null}
+
+      {(() => {
+        const breakout = normalizeBreakoutRooms(conference.breakoutRooms);
+        if (!breakout.allowed || breakout.rooms.length === 0) return null;
+        return (
+          <div className="mt-6 border-t border-border pt-6">
+            <h2 className="text-sm font-semibold text-foreground">Breakout rooms</h2>
+            <ul className="mt-3 space-y-3">
+              {breakout.rooms.map((room) => {
+                const href = room.link
+                  ? room.link.startsWith("http")
+                    ? room.link
+                    : `https://${room.link}`
+                  : null;
+                return (
+                  <li key={room.id} className="text-sm">
+                    <p className="font-medium text-foreground">{room.platform || "Breakout room"}</p>
+                    {room.topic ? (
+                      <p className="mt-0.5 text-foreground/90">{room.topic}</p>
+                    ) : null}
+                    {href ? (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 inline-block break-all text-primary hover:underline"
+                      >
+                        {room.link}
+                      </a>
+                    ) : null}
+                    {room.description ? (
+                      <p className="mt-1 whitespace-pre-wrap text-foreground/80">
+                        {room.description}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
 
       {conference.requiresPayment && conference.paymentDetails ? (
         <div className="mt-6 border-t border-border pt-6">

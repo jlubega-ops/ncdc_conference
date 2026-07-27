@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import {
   feedbackReportToCsv,
   getConferenceFeedbackReport,
@@ -8,10 +8,11 @@ import { renderFeedbackReportPdf } from "@/lib/feedback/pdf-report";
 
 export async function GET(request, { params }) {
   const { id } = await params;
-  const session = await requireConferenceAccess(id);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const report = await getConferenceFeedbackReport(id);

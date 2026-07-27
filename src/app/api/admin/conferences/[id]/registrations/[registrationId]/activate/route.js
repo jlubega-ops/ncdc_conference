@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceAccess } from "@/lib/auth/guards";
+import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
 import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
@@ -9,10 +9,11 @@ import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request, { params }) {
   const { id: conferenceId, registrationId } = await params;
-  const session = await requireConferenceAccess(conferenceId);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceAccess(conferenceId);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const registration = await prisma.conferenceRegistration.findFirst({
     where: { id: registrationId, conferenceId },

@@ -34,10 +34,7 @@ export function ReportsDashboard({ initialRole }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load report.");
       setReport(data.report);
-      if (
-        data.report?.conferences?.length === 1 &&
-        conferenceId === "all"
-      ) {
+      if (data.report?.conferences?.length === 1 && conferenceId === "all") {
         setConferenceId(data.report.conferences[0].id);
       }
     } catch (e) {
@@ -81,6 +78,15 @@ export function ReportsDashboard({ initialRole }) {
     }));
   }, [report]);
 
+  const modeSegments = useMemo(() => {
+    if (!report?.overview?.registrationModes) return [];
+    return report.overview.registrationModes.map((s, i) => ({
+      label: s.label,
+      value: s.value,
+      color: CHART_COLORS[i % CHART_COLORS.length],
+    }));
+  }, [report]);
+
   return (
     <div className="space-y-8">
       <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary-light via-surface to-surface p-6 shadow-sm">
@@ -97,7 +103,7 @@ export function ReportsDashboard({ initialRole }) {
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
               {initialRole === "REVIEWER"
                 ? "Track papers assigned to you, your review activity, and conference feedback in your scope."
-                : "Interactive overview of registrations, demographics, paper submissions, evaluations, and attendance."}
+                : "Interactive overview scoped to your conferences. Sections appear only when those features are enabled."}
             </p>
           </div>
         </div>
@@ -126,6 +132,57 @@ export function ReportsDashboard({ initialRole }) {
       {!loading && report ? (
         <>
           {report.summary?.length > 0 ? <ReportStatCards items={report.summary} /> : null}
+
+          {report.sections?.overview && report.overview ? (
+            <section className="space-y-4">
+              <SectionHeading
+                title="Conference portfolio"
+                description="How conferences in this scope are configured."
+              />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <ReportDonutChart
+                  title="Registration modes"
+                  segments={modeSegments}
+                  centerLabel="conferences"
+                />
+                <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+                  <p className="text-sm font-semibold text-foreground">Feature coverage</p>
+                  <ul className="mt-4 space-y-3 text-sm">
+                    <li className="flex justify-between border-b border-border pb-2">
+                      <span className="text-muted-foreground">Published / drafts</span>
+                      <span className="font-semibold text-foreground">
+                        {report.overview.published} / {report.overview.drafts}
+                      </span>
+                    </li>
+                    <li className="flex justify-between border-b border-border pb-2">
+                      <span className="text-muted-foreground">With paper submissions</span>
+                      <span className="font-semibold text-foreground">
+                        {report.overview.withPapers}
+                      </span>
+                    </li>
+                    <li className="flex justify-between border-b border-border pb-2">
+                      <span className="text-muted-foreground">With gifts & awards</span>
+                      <span className="font-semibold text-foreground">
+                        {report.overview.withGifts}
+                      </span>
+                    </li>
+                    <li className="flex justify-between border-b border-border pb-2">
+                      <span className="text-muted-foreground">With online streams</span>
+                      <span className="font-semibold text-foreground">
+                        {report.overview.withStreams}
+                      </span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span className="text-muted-foreground">With breakout rooms</span>
+                      <span className="font-semibold text-foreground">
+                        {report.overview.withBreakouts}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {report.sections?.registrations && report.registrations ? (
             <section className="space-y-4">
@@ -259,11 +316,18 @@ export function ReportsDashboard({ initialRole }) {
                   <p className="mt-2 text-sm text-muted-foreground">
                     {report.feedback.total} total responses
                   </p>
+                  {report.feedback.byType?.length > 0 ? (
+                    <ul className="mt-4 space-y-2 text-sm">
+                      {report.feedback.byType.map((row) => (
+                        <li key={row.key} className="flex justify-between border-t border-border pt-2">
+                          <span className="text-muted-foreground">{row.label}</span>
+                          <span className="font-semibold text-foreground">{row.value}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
-                <ReportBarChart
-                  title="Rating distribution"
-                  items={report.feedback.byRating}
-                />
+                <ReportBarChart title="Rating distribution" items={report.feedback.byRating} />
               </div>
             </section>
           ) : null}
@@ -271,22 +335,105 @@ export function ReportsDashboard({ initialRole }) {
           {report.sections?.attendance && report.attendance ? (
             <section className="space-y-4">
               <SectionHeading
-                title="Attendance"
-                description="Daily check-ins recorded by attendees during conference days."
+                title="Attendance & certificates"
+                description="Daily check-ins and certificates issued for conferences with scheduled days."
               />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-                  <p className="text-xs font-medium text-muted-foreground">Total check-ins</p>
-                  <p className="mt-2 text-3xl font-bold text-primary">
-                    {report.attendance.totalCheckIns}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-                  <p className="text-xs font-medium text-muted-foreground">Unique attendees</p>
-                  <p className="mt-2 text-3xl font-bold text-foreground">
-                    {report.attendance.uniqueAttendees}
-                  </p>
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard label="Total check-ins" value={report.attendance.totalCheckIns} />
+                <MetricCard label="Unique attendees" value={report.attendance.uniqueAttendees} />
+                <MetricCard
+                  label="Certificates issued"
+                  value={report.attendance.certificates?.issued ?? 0}
+                />
+                <MetricCard
+                  label="Certificates emailed"
+                  value={report.attendance.certificates?.emailed ?? 0}
+                />
+              </div>
+              {report.attendance.byDay?.length > 0 ? (
+                <ReportBarChart
+                  title="Check-ins by day"
+                  items={report.attendance.byDay.map((d) => ({
+                    label: d.label.slice(5),
+                    value: d.value,
+                  }))}
+                  vertical={report.attendance.byDay.length <= 10}
+                />
+              ) : null}
+            </section>
+          ) : null}
+
+          {report.sections?.gifts && report.gifts ? (
+            <section className="space-y-4">
+              <SectionHeading
+                title="Gifts & awards"
+                description={`${report.gifts.conferencesWithGifts} conference(s) with gifts enabled · ${report.gifts.issuances} issuance records.`}
+              />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <MetricCard label="Fully issued" value={report.gifts.fullyIssued} />
+                <MetricCard label="Partially issued" value={report.gifts.partiallyIssued} />
+                <MetricCard label="Issuance records" value={report.gifts.issuances} />
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {report.gifts.byCategory?.length > 0 ? (
+                  <ReportBarChart
+                    title="Issuances by category"
+                    items={report.gifts.byCategory.map((c) => ({
+                      label: c.label,
+                      value: c.value,
+                    }))}
+                  />
+                ) : (
+                  <EmptyPanel text="No gift issuances recorded yet." />
+                )}
+                {report.gifts.itemCounts?.length > 0 ? (
+                  <ReportBarChart
+                    title="Items issued"
+                    subtitle="Quantity issued across enabled gift catalogs"
+                    items={report.gifts.itemCounts.map((item) => ({
+                      label:
+                        typeof item.remaining === "number"
+                          ? `${item.name} (${item.remaining} left)`
+                          : item.name,
+                      value: item.count,
+                    }))}
+                  />
+                ) : (
+                  <EmptyPanel text="No gift catalog items issued yet." />
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          {report.sections?.online && report.online ? (
+            <section className="space-y-4">
+              <SectionHeading
+                title="Online streams & breakout rooms"
+                description="Configuration health for remote participation links in this scope."
+              />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard label="Conferences with streams" value={report.online.withStreams} />
+                <MetricCard label="Stream links" value={report.online.streamEntries} />
+                <MetricCard label="Conferences with breakouts" value={report.online.withBreakouts} />
+                <MetricCard label="Breakout rooms" value={report.online.breakoutRooms} />
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {report.online.streamPlatforms?.length > 0 ? (
+                  <ReportBarChart
+                    title="Stream platforms"
+                    items={report.online.streamPlatforms}
+                  />
+                ) : (
+                  <EmptyPanel text="No online streams configured." />
+                )}
+                {report.online.breakoutPlatforms?.length > 0 ? (
+                  <ReportBarChart
+                    title="Breakout platforms"
+                    items={report.online.breakoutPlatforms}
+                  />
+                ) : (
+                  <EmptyPanel text="No breakout rooms configured." />
+                )}
               </div>
             </section>
           ) : null}
@@ -355,6 +502,29 @@ function SectionHeading({ title, description }) {
     <div className="border-b border-border pb-2">
       <h2 className="text-lg font-semibold text-foreground">{title}</h2>
       {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * @param {{ label: string; value: number }} props
+ */
+function MetricCard({ label, value }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-2 text-3xl font-bold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * @param {{ text: string }} props
+ */
+function EmptyPanel({ text }) {
+  return (
+    <div className="flex items-center justify-center rounded-xl border border-dashed border-border bg-surface p-8 text-sm text-muted-foreground">
+      {text}
     </div>
   );
 }
