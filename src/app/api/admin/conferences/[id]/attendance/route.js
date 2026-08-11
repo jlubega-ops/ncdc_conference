@@ -6,6 +6,7 @@ import {
   normalizeConferenceDays,
 } from "@/lib/attendance/utils";
 import { getProfileFromUser, buildProfilePayload } from "@/lib/users/profile";
+import { updateRegistrationAttendeeByAdmin } from "@/lib/registration/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
@@ -409,6 +410,48 @@ export async function PATCH(request, { params }) {
     registration.formData && typeof registration.formData === "object"
       ? registration.formData
       : {};
+
+  // Prefer the shared registration update path when email is included (revokes/reissues access keys).
+  if (body.profile?.email !== undefined || body.formData?.email !== undefined) {
+    try {
+      const result = await updateRegistrationAttendeeByAdmin({
+        conferenceId: id,
+        registrationId: registration.id,
+        formData: {
+          ...existingForm,
+          ...profile,
+          ...(body.formData && typeof body.formData === "object" ? body.formData : {}),
+          ...(body.profile?.email !== undefined ? { email: body.profile.email } : {}),
+        },
+        profile: body.profile,
+      });
+      await logActivity({
+        session,
+        request,
+        action: ACTIVITY_ACTIONS.ATTENDANCE_UPDATE,
+        description: result.emailChanged
+          ? `Updated attendee email ${result.previousEmail} → ${result.email} from attendance`
+          : "Updated attendee details from attendance roster",
+        resourceType: "registration",
+        resourceId: registration.id,
+        conferenceId: id,
+        metadata: { userId, emailChanged: result.emailChanged },
+      });
+      return NextResponse.json({
+        ok: true,
+        message:
+          result.accessKeyIssueWarning ||
+          (result.emailChanged && result.accessKeyEmailed
+            ? "Attendee details updated. Previous access code revoked; a new code was emailed."
+            : "Attendee details updated."),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update details.";
+      const status =
+        message.includes("not found") ? 404 : message.includes("already exists") ? 409 : 400;
+      return NextResponse.json({ error: message }, { status });
+    }
+  }
 
   await prisma.$transaction([
     prisma.user.update({

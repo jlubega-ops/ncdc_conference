@@ -308,6 +308,139 @@ export async function reviewRegistration({
   throw new Error("Invalid review action.");
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Admin update of registration profile details, including email.
+ * When email changes: old access keys for this conference are revoked;
+ * if the registration is CONFIRMED, a new key is issued and emailed to the new address.
+ *
+ * @param {{
+ *   conferenceId: string;
+ *   registrationId: string;
+ *   formData?: Record<string, unknown>;
+ *   profile?: Record<string, unknown>;
+ * }} params
+ */
+export async function updateRegistrationAttendeeByAdmin({
+  conferenceId,
+  registrationId,
+  formData: incomingForm,
+  profile: incomingProfile,
+}) {
+  const registration = await prisma.conferenceRegistration.findFirst({
+    where: { id: registrationId, conferenceId },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, profileData: true },
+      },
+      conference: true,
+    },
+  });
+  if (!registration) {
+    throw new Error("Registration not found.");
+  }
+
+  const existingForm =
+    registration.formData && typeof registration.formData === "object"
+      ? registration.formData
+      : {};
+  const incoming =
+    incomingForm && typeof incomingForm === "object"
+      ? incomingForm
+      : incomingProfile && typeof incomingProfile === "object"
+        ? incomingProfile
+        : {};
+
+  const previousEmail = registration.user.email.toLowerCase();
+  const requestedEmailRaw =
+    incoming.email !== undefined && incoming.email !== null
+      ? String(incoming.email).trim().toLowerCase()
+      : previousEmail;
+
+  if (!requestedEmailRaw || !EMAIL_RE.test(requestedEmailRaw)) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  const emailChanged = requestedEmailRaw !== previousEmail;
+  if (emailChanged) {
+    const taken = await prisma.user.findUnique({ where: { email: requestedEmailRaw } });
+    if (taken && taken.id !== registration.userId) {
+      throw new Error("A user with this email already exists.");
+    }
+  }
+
+  const profile = buildProfilePayload({
+    ...getProfileFromUser(registration.user),
+    ...existingForm,
+    ...incoming,
+  });
+
+  const formData = {
+    ...existingForm,
+    ...incoming,
+    ...profile,
+    email: requestedEmailRaw,
+  };
+
+  const name = profile.fullName || registration.user.name;
+
+  if (emailChanged) {
+    await prisma.conferenceAccessKey.deleteMany({
+      where: {
+        conferenceId,
+        OR: [
+          { userId: registration.userId },
+          { email: previousEmail },
+          { email: requestedEmailRaw },
+        ],
+      },
+    });
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: registration.userId },
+      data: {
+        email: requestedEmailRaw,
+        name,
+        profileData: profile,
+      },
+    }),
+    prisma.conferenceRegistration.update({
+      where: { id: registration.id },
+      data: { formData },
+    }),
+  ]);
+
+  let accessKeyEmailed = false;
+  let accessKeyIssueWarning = null;
+  if (emailChanged && registration.status === "CONFIRMED") {
+    const keyResult = await issueAndEmailAccessKey({
+      user: {
+        id: registration.userId,
+        email: requestedEmailRaw,
+        name,
+      },
+      conference: registration.conference,
+      revokeExisting: true,
+    });
+    accessKeyEmailed = keyResult.emailSent;
+    if (!keyResult.emailSent) {
+      accessKeyIssueWarning =
+        "Email was updated and the previous access code was revoked, but the new code email could not be sent. Use Resend access code.";
+    }
+  }
+
+  return {
+    emailChanged,
+    accessKeyEmailed,
+    accessKeyIssueWarning,
+    previousEmail,
+    email: requestedEmailRaw,
+  };
+}
+
 /**
  * Resend access key email for a confirmed registration.
  */

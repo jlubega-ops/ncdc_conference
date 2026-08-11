@@ -34,6 +34,7 @@ function buildEditForm(row) {
     firstName: form.firstName || profile.firstName || "",
     middleName: form.middleName || profile.middleName || "",
     lastName: form.lastName || profile.lastName || "",
+    email: row?.user?.email || form.email || "",
     telephone: form.telephone || profile.telephone || "",
     countryCode: form.countryCode || profile.countryCode || "+256",
     institution: form.institution || profile.institution || "",
@@ -247,6 +248,22 @@ export function ConferenceAdminRegistrationsTab({
 
   async function saveEdit() {
     if (!selected) return;
+    const email = String(editForm.email || "").trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
+    const emailChanged =
+      email.toLowerCase() !== String(selected.user?.email || "").toLowerCase();
+    if (
+      emailChanged &&
+      selected.status === "CONFIRMED" &&
+      !window.confirm(
+        "Changing the email will revoke their current access code and email a new one to the new address. Continue?",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch(
@@ -254,7 +271,7 @@ export function ConferenceAdminRegistrationsTab({
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ formData: editForm }),
+          body: JSON.stringify({ formData: { ...editForm, email } }),
         },
       );
       const data = await res.json();
@@ -609,6 +626,23 @@ export function ConferenceAdminRegistrationsTab({
                     value={editForm.gender}
                     onChange={(e) => setEditForm((p) => ({ ...p, gender: e.target.value }))}
                   />
+                  <div className="sm:col-span-2">
+                    <Input
+                      label="Email"
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
+                    />
+                  </div>
+                  {String(editForm.email || "").trim().toLowerCase() !==
+                  String(selected.user?.email || "").toLowerCase() ? (
+                    <p className="sm:col-span-2 text-sm text-amber-800">
+                      Changing email revokes their current access code
+                      {selected.status === "CONFIRMED"
+                        ? " and emails a new one to this address."
+                        : ". A new code will be issued when they are approved."}
+                    </p>
+                  ) : null}
                   <Input
                     label="Country code"
                     value={editForm.countryCode}
@@ -632,9 +666,6 @@ export function ConferenceAdminRegistrationsTab({
                     }
                   />
                 </div>
-                <p className="text-sm text-foreground/80">
-                  Email: <span className="font-medium text-foreground">{selected.user?.email}</span>
-                </p>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" disabled={busy} onClick={() => setEditing(false)}>
                     Cancel

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
-import { buildProfilePayload, getProfileFromUser } from "@/lib/users/profile";
+import { updateRegistrationAttendeeByAdmin } from "@/lib/registration/service";
 import { deleteUserIfOrphanAttendee } from "@/lib/users/orphan-attendee";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
@@ -38,46 +38,20 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const registration = await loadRegistration(id, registrationId);
-  if (!registration) {
-    return NextResponse.json({ error: "Registration not found." }, { status: 404 });
+  let updateResult;
+  try {
+    updateResult = await updateRegistrationAttendeeByAdmin({
+      conferenceId: id,
+      registrationId,
+      formData: body.formData,
+      profile: body.profile,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not update details.";
+    const status =
+      message.includes("not found") ? 404 : message.includes("already exists") ? 409 : 400;
+    return NextResponse.json({ error: message }, { status });
   }
-
-  const existingForm =
-    registration.formData && typeof registration.formData === "object"
-      ? registration.formData
-      : {};
-  const incoming =
-    body.formData && typeof body.formData === "object" ? body.formData : body.profile || {};
-
-  const profile = buildProfilePayload({
-    ...getProfileFromUser(registration.user),
-    ...existingForm,
-    ...incoming,
-  });
-
-  const formData = {
-    ...existingForm,
-    ...incoming,
-    ...profile,
-    email: registration.user.email,
-  };
-
-  const name = profile.fullName || registration.user.name;
-
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: registration.userId },
-      data: {
-        name,
-        profileData: profile,
-      },
-    }),
-    prisma.conferenceRegistration.update({
-      where: { id: registration.id },
-      data: { formData },
-    }),
-  ]);
 
   const updated = await loadRegistration(id, registrationId);
   const accessKey = await prisma.conferenceAccessKey.findFirst({
@@ -85,8 +59,8 @@ export async function PATCH(request, { params }) {
       conferenceId: id,
       revokedAt: null,
       OR: [
-        { userId: registration.userId },
-        { email: registration.user.email.toLowerCase() },
+        { userId: updated.userId },
+        { email: updated.user.email.toLowerCase() },
       ],
     },
   });
@@ -95,16 +69,32 @@ export async function PATCH(request, { params }) {
     session,
     request,
     action: ACTIVITY_ACTIONS.REGISTRATION_UPDATE,
-    description: `Updated registration for ${registration.user.email}`,
+    description: updateResult.emailChanged
+      ? `Updated registration and email ${updateResult.previousEmail} → ${updateResult.email}`
+      : `Updated registration for ${updateResult.email}`,
     resourceType: "registration",
-    resourceId: registration.id,
+    resourceId: registrationId,
     conferenceId: id,
+    metadata: {
+      emailChanged: updateResult.emailChanged,
+      accessKeyEmailed: updateResult.accessKeyEmailed,
+    },
   });
+
+  const message =
+    updateResult.accessKeyIssueWarning ||
+    (updateResult.emailChanged
+      ? updateResult.accessKeyEmailed
+        ? "Details updated. Previous access code revoked; a new code was emailed to the new address."
+        : "Details updated. Email changed; no access code was issued because this registration is not approved yet."
+      : "Registration details updated.");
 
   return NextResponse.json({
     ok: true,
     registration: mapRegistrationForAdmin(updated, { hasAccessKey: Boolean(accessKey) }),
-    message: "Registration details updated.",
+    message,
+    emailChanged: updateResult.emailChanged,
+    accessKeyEmailed: updateResult.accessKeyEmailed,
   });
 }
 
