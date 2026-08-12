@@ -40,6 +40,7 @@ function buildFeedbackDays(conference, todayKey) {
   const settings = normalizeFeedbackSettings(conference.feedbackSettings);
   const days = normalizeConferenceDays(conference.conferenceDays);
   const allSpeakers = Array.isArray(conference.speakers) ? conference.speakers : [];
+  const alwaysOpen = settings.availability === "always";
 
   return days.map((day) => {
     const status =
@@ -51,7 +52,7 @@ function buildFeedbackDays(conference, todayKey) {
     return {
       ...day,
       status,
-      canSubmit: status === "today",
+      canSubmit: alwaysOpen ? status !== "future" : status === "today",
       speakers: daySpeakers.map((speaker) => ({
         id: speaker.id,
         name: speaker.name,
@@ -102,6 +103,14 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ error: check.error }, { status: check.status });
   }
 
+  const settings = normalizeFeedbackSettings(conference.feedbackSettings);
+  if (!settings.allowed) {
+    return NextResponse.json(
+      { error: "Feedback is not enabled for this conference." },
+      { status: 403 },
+    );
+  }
+
   const tz = conference.timezone || "Africa/Nairobi";
   const { dateKey: todayKey } = getZonedDateTimeParts(new Date(), tz);
 
@@ -115,7 +124,7 @@ export async function GET(_request, { params }) {
 
   return NextResponse.json({
     conference: { slug: conference.slug, title: conference.title },
-    settings: normalizeFeedbackSettings(conference.feedbackSettings),
+    settings,
     timezone: tz,
     todayKey,
     currentMeetingDay,
@@ -150,6 +159,12 @@ export async function POST(request, { params }) {
   }
 
   const settings = normalizeFeedbackSettings(conference.feedbackSettings);
+  if (!settings.allowed) {
+    return NextResponse.json(
+      { error: "Feedback is not enabled for this conference." },
+      { status: 403 },
+    );
+  }
   const feedbackType =
     body?.feedbackType === FEEDBACK_TYPES.SPEAKER
       ? FEEDBACK_TYPES.SPEAKER
@@ -171,17 +186,26 @@ export async function POST(request, { params }) {
   if (!dayDate || !isScheduledDay) {
     return NextResponse.json({ error: "Invalid feedback day." }, { status: 400 });
   }
-  if (dayDate < todayKey) {
-    return NextResponse.json(
-      { error: "Feedback for past days is locked and cannot be edited." },
-      { status: 403 },
-    );
-  }
-  if (dayDate > todayKey) {
-    return NextResponse.json(
-      { error: "Feedback for future days opens on the meeting date." },
-      { status: 403 },
-    );
+  if (settings.availability === "always") {
+    if (dayDate > todayKey) {
+      return NextResponse.json(
+        { error: "Feedback for future days opens on the meeting date." },
+        { status: 403 },
+      );
+    }
+  } else {
+    if (dayDate < todayKey) {
+      return NextResponse.json(
+        { error: "Feedback for past days is locked and cannot be edited." },
+        { status: 403 },
+      );
+    }
+    if (dayDate > todayKey) {
+      return NextResponse.json(
+        { error: "Feedback for future days opens on the meeting date." },
+        { status: 403 },
+      );
+    }
   }
 
   const { answers, rating, comment, error } = validateFeedbackAnswers(

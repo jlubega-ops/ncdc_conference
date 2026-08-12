@@ -109,11 +109,11 @@ export async function getCertificateSummaries(userId) {
     const conferenceMarks = marksByConference.get(reg.conferenceId) ?? [];
     const stats = computeAttendanceStats(days, conferenceMarks, tz);
     const mapped = mapConferenceForUi(reg.conference);
+    const eligible = isCertificateEligible(stats, mapped);
+    const cert = certByConference.get(reg.conferenceId);
     const conferenceEnded =
       mapped.status === "completed" ||
       (stats.remaining === 0 && stats.elapsed >= stats.totalDays && stats.totalDays > 0);
-    const eligible = isCertificateEligible(stats, mapped.status);
-    const cert = certByConference.get(reg.conferenceId);
 
     return {
       conference: {
@@ -122,6 +122,7 @@ export async function getCertificateSummaries(userId) {
         cardImage: mapped.cardImage,
         dateRange: mapped.dateRange,
         lifecycleStatus: mapped.status,
+        certificateSettings: mapped.certificateSettings,
       },
       stats,
       eligible,
@@ -136,7 +137,7 @@ export async function getCertificateSummaries(userId) {
         : null,
       message: cert
         ? "Your certificate has been issued."
-        : certificateEligibilityMessage(stats.overallProgress, conferenceEnded),
+        : certificateEligibilityMessage(stats, mapped),
     };
   });
 }
@@ -191,15 +192,10 @@ async function createCertificateRecord(conference, userId, recipientName, stats)
  */
 export async function issueCertificateForUser(userId, slug, opts = {}) {
   const ctx = await getRegistrationContext(userId, slug);
-  const eligible = isCertificateEligible(ctx.stats, ctx.conference.status);
+  const eligible = isCertificateEligible(ctx.stats, ctx.conference);
 
   if (!eligible) {
-    const conferenceEnded =
-      ctx.conference.status === "completed" ||
-      (ctx.stats.remaining === 0 &&
-        ctx.stats.elapsed >= ctx.stats.totalDays &&
-        ctx.stats.totalDays > 0);
-    throw new Error(certificateEligibilityMessage(ctx.stats.overallProgress, conferenceEnded));
+    throw new Error(certificateEligibilityMessage(ctx.stats, ctx.conference));
   }
 
   let cert = await prisma.conferenceCertificate.findUnique({

@@ -1,12 +1,35 @@
-import { getZonedDateTimeParts, getDayWindowState, normalizeConferenceDays } from "@/lib/attendance/utils";
+import { getZonedDateTimeParts, getDayWindowState } from "@/lib/attendance/utils";
 
 /**
- * @param {Array<{ date: string; startTime: string; endTime: string; dayIndex: number }>} days
+ * @param {string | Date | null | undefined} value
+ */
+function toDateKey(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    return value.toISOString().slice(0, 10);
+  }
+  return String(value).slice(0, 10);
+}
+
+/**
+ * @param {Array<{
+ *   date: string;
+ *   startTime: string;
+ *   endTime: string;
+ *   attendanceStartTime?: string;
+ *   attendanceEndTime?: string;
+ *   dayIndex: number;
+ * }>} days
  * @param {Array<{ dayDate: string }>} marks
  * @param {string} timeZone
  */
 export function computeAttendanceStats(days, marks, timeZone) {
-  const markSet = new Set(marks.map((m) => m.dayDate));
+  // Any stored mark counts as attended (self check-in or admin override),
+  // so attendee and admin views stay in sync.
+  const markSet = new Set(
+    (marks || []).map((m) => toDateKey(m.dayDate)).filter(Boolean),
+  );
   const { dateKey: todayKey } = getZonedDateTimeParts(new Date(), timeZone);
 
   let attended = 0;
@@ -15,20 +38,26 @@ export function computeAttendanceStats(days, marks, timeZone) {
   let todayOpen = false;
 
   const dayBreakdown = days.map((day) => {
-    const marked = markSet.has(day.date);
-    const window = getDayWindowState(day.date, day.startTime, day.endTime, timeZone);
+    const dateKey = toDateKey(day.date);
+    const marked = markSet.has(dateKey);
+    const window = getDayWindowState(
+      dateKey,
+      day.attendanceStartTime || day.startTime,
+      day.attendanceEndTime || day.endTime,
+      timeZone,
+    );
     let status = "upcoming";
 
-    if (day.date < todayKey) {
-      status = marked ? "attended" : "missed";
-      if (marked) attended += 1;
-      else missed += 1;
-    } else if (day.date === todayKey) {
+    if (marked) {
+      // Admin override or check-in always shows as attended, even for future days.
+      status = "attended";
+      attended += 1;
+    } else if (dateKey < todayKey) {
+      status = "missed";
+      missed += 1;
+    } else if (dateKey === todayKey) {
       todayOpen = window.phase === "open";
-      if (marked) {
-        status = "attended";
-        attended += 1;
-      } else if (window.phase === "after_window") {
+      if (window.phase === "after_window") {
         status = "missed";
         missed += 1;
       } else {
@@ -42,6 +71,7 @@ export function computeAttendanceStats(days, marks, timeZone) {
 
     return {
       ...day,
+      date: dateKey,
       status,
       marked,
       windowPhase: window.phase,

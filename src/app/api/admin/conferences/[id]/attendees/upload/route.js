@@ -45,7 +45,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       ok: true,
       results,
-      message: `Upload complete: ${results.created} created, ${results.updated} updated, ${results.emailed} emails sent.`,
+      message: `Upload complete: ${results.created} created, ${results.updated} updated. Access codes were not emailed — use Send access codes when ready.`,
     });
   } catch (err) {
     console.error("Attendee upload error:", err);

@@ -79,6 +79,7 @@ function mapRosterRow(registration, marksByUserDay, days) {
         ? `${form.countryCode || ""} ${form.telephone}`.trim()
         : null,
     institution: profile.institution || form.institution || null,
+    accessCode: null,
     profile,
     formData: form,
     daysAttended,
@@ -104,7 +105,7 @@ export async function GET(_request, { params }) {
   const tz = conference.timezone || "Africa/Nairobi";
   const { dateKey: todayKey } = getZonedDateTimeParts(new Date(), tz);
 
-  const [marks, registrations] = await Promise.all([
+  const [marks, registrations, accessKeys] = await Promise.all([
     prisma.conferenceAttendance.findMany({
       where: { conferenceId: id },
       include: {
@@ -123,7 +124,19 @@ export async function GET(_request, { params }) {
       },
       orderBy: { registeredAt: "asc" },
     }),
+    prisma.conferenceAccessKey.findMany({
+      where: { conferenceId: id, revokedAt: null },
+      select: { userId: true, email: true, displayCode: true },
+    }),
   ]);
+
+  const codeByUserId = new Map();
+  const codeByEmail = new Map();
+  for (const key of accessKeys) {
+    if (!key.displayCode) continue;
+    if (key.userId) codeByUserId.set(key.userId, key.displayCode);
+    if (key.email) codeByEmail.set(key.email.toLowerCase(), key.displayCode);
+  }
 
   const regByUser = new Map(registrations.map((r) => [r.userId, r]));
   /** @type {Map<string, any>} */
@@ -132,7 +145,14 @@ export async function GET(_request, { params }) {
     marksByUserDay.set(`${mark.userId}:${mark.dayDate}`, mark);
   }
 
-  const roster = registrations.map((r) => mapRosterRow(r, marksByUserDay, days));
+  const roster = registrations.map((r) => {
+    const row = mapRosterRow(r, marksByUserDay, days);
+    row.accessCode =
+      codeByUserId.get(r.userId) ||
+      codeByEmail.get(r.user.email?.toLowerCase()) ||
+      null;
+    return row;
+  });
 
   const daySummaries = days.map((day) => {
     const attended = roster.filter((r) => r.byDay[day.date]?.attended).length;

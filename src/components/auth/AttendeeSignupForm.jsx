@@ -134,7 +134,7 @@ export function AttendeeSignupForm({ conferences: initialConferences = [], defau
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         Already have an access key?{" "}
-        <Link href="/login?tab=access" className="font-medium text-primary hover:underline">
+        <Link href="/access" className="font-medium text-primary hover:underline">
           Sign in
         </Link>
       </p>

@@ -27,11 +27,13 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/admin/conferences/${conferenceId}/attendance`);
+      const res = await fetch(`/api/admin/conferences/${conferenceId}/attendance`, {
+        cache: "no-store",
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load attendance.");
       setData(json);
@@ -43,9 +45,9 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load attendance.");
-      setData(null);
+      if (!silent) setData(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [conferenceId]);
 
@@ -59,12 +61,15 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
     return data.days.find((d) => d.date === dayFilter) ?? null;
   }, [data, dayFilter]);
 
+  /** Overview strip follows the selected day (not only "today"). */
+  const overviewDay = selectedDay ?? data?.summary?.today ?? null;
+
   const filteredRoster = useMemo(() => {
     const roster = data?.roster ?? [];
     const q = search.trim().toLowerCase();
     return roster.filter((row) => {
       if (q) {
-        const hay = [row.name, row.email, row.telephone, row.institution]
+        const hay = [row.name, row.email, row.telephone, row.institution, row.accessCode]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -80,6 +85,58 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
       return true;
     });
   }, [data, search, dayFilter, statusFilter]);
+
+  /**
+   * Keep day chips / overview counts in sync immediately after an override.
+   * @param {string} userId
+   * @param {string} dayDate
+   * @param {boolean} attended
+   * @param {{ attendanceId?: string | null; markedAt?: string | null }} [mark]
+   */
+  function applyLocalAttendanceChange(userId, dayDate, attended, mark = {}) {
+    setData((prev) => {
+      if (!prev) return prev;
+
+      const roster = (prev.roster ?? []).map((row) => {
+        if (row.userId !== userId) return row;
+        const byDay = { ...(row.byDay || {}) };
+        byDay[dayDate] = attended
+          ? {
+              attended: true,
+              attendanceId: mark.attendanceId ?? byDay[dayDate]?.attendanceId ?? null,
+              markedAt: mark.markedAt ?? byDay[dayDate]?.markedAt ?? new Date().toISOString(),
+            }
+          : { attended: false, attendanceId: null, markedAt: null };
+        const daysAttended = Object.values(byDay).filter((d) => d?.attended).length;
+        return { ...row, byDay, daysAttended };
+      });
+
+      const registered = roster.length;
+      const days = (prev.days ?? []).map((day) => {
+        const attendedCount = roster.filter((r) => r.byDay?.[day.date]?.attended).length;
+        const absent = Math.max(0, registered - attendedCount);
+        const rate = registered > 0 ? Math.round((attendedCount / registered) * 100) : 0;
+        return { ...day, registered, attended: attendedCount, absent, rate };
+      });
+
+      const todaySummary =
+        days.find((d) => d.date === prev.todayKey) ??
+        days.find((d) => d.date <= prev.todayKey) ??
+        days[0] ??
+        null;
+
+      return {
+        ...prev,
+        roster,
+        days,
+        summary: {
+          ...prev.summary,
+          registered,
+          today: todaySummary,
+        },
+      };
+    });
+  }
 
   async function overrideAttendance(row, dayDate, attended) {
     const key = `${row.userId}:${dayDate}:${attended ? "on" : "off"}`;
@@ -104,9 +161,14 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not update attendance.");
       toast.success(`Marked present for ${row.name}.`);
-      await load();
+      applyLocalAttendanceChange(row.userId, dayDate, true, {
+        attendanceId: json.attendance?.id ?? null,
+        markedAt: json.attendance?.markedAt ?? new Date().toISOString(),
+      });
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update attendance.");
+      await load({ silent: true });
     } finally {
       setBusyKey("");
     }
@@ -129,11 +191,13 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not remove attendance.");
       toast.success("Attendance removed.");
+      applyLocalAttendanceChange(deleteTarget.userId, deleteTarget.dayDate, false);
       setDeleteTarget(null);
       setDeleteConfirm("");
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not remove attendance.");
+      await load({ silent: true });
     } finally {
       setBusy(false);
     }
@@ -162,18 +226,22 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
       <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-md border border-border bg-surface px-4 py-2.5 text-sm text-foreground">
         <StatInline label="Registered" value={summary?.registered ?? 0} />
         <StatInline
-          label={summary?.today ? `Present (Day ${summary.today.dayIndex})` : "Present today"}
-          value={summary?.today?.attended ?? 0}
+          label={
+            overviewDay
+              ? `Present (Day ${overviewDay.dayIndex})`
+              : "Present"
+          }
+          value={overviewDay?.attended ?? 0}
           tone="primary"
         />
         <StatInline
-          label={summary?.today ? `Absent (Day ${summary.today.dayIndex})` : "Absent today"}
-          value={summary?.today?.absent ?? 0}
+          label={overviewDay ? `Absent (Day ${overviewDay.dayIndex})` : "Absent"}
+          value={overviewDay?.absent ?? 0}
           tone="amber"
         />
         <StatInline
-          label={summary?.today ? `Rate (Day ${summary.today.dayIndex})` : "Attendance rate"}
-          value={`${summary?.today?.rate ?? 0}%`}
+          label={overviewDay ? `Rate (Day ${overviewDay.dayIndex})` : "Attendance rate"}
+          value={`${overviewDay?.rate ?? 0}%`}
           tone="primary"
         />
       </div>
@@ -225,7 +293,7 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
             label="Search participants"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name, email, phone…"
+            placeholder="Name, email, phone, access code…"
           />
         </div>
         <div>

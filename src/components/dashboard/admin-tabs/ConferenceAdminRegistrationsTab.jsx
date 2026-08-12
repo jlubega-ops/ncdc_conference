@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, Pencil, Trash2, Upload } from "lucide-react";
+import { KeyRound, Pencil, Plus, Trash2, Upload, Users } from "lucide-react";
 import { AdminListFilters } from "./AdminListFilters";
 import { AttendeeUploadDialog } from "./AttendeeUploadDialog";
+import { AccessCodeDisplay } from "./AccessCodeDisplay";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -12,6 +13,8 @@ import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
 import { formatAdminDate } from "./AdminTabShell";
 import { RegistrationDetailFields } from "./RegistrationDetailFields";
+
+const EMPTY_PERSON = { firstName: "", lastName: "", email: "", comment: "", notes: "" };
 
 const STATUS_LABELS = {
   PENDING: "Pending",
@@ -69,18 +72,35 @@ export function ConferenceAdminRegistrationsTab({
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_PERSON);
+  const [addForce, setAddForce] = useState(false);
+  const [addWarning, setAddWarning] = useState("");
+  const [createdAccessKey, setCreatedAccessKey] = useState(null);
+  const [repTarget, setRepTarget] = useState(null);
+  const [repForm, setRepForm] = useState(EMPTY_PERSON);
+  const [repForce, setRepForce] = useState(false);
+  const [repWarning, setRepWarning] = useState("");
+  const [repsView, setRepsView] = useState(null);
 
   const isAdminUpload = registrationMode === "ADMIN_UPLOAD";
   const isOpenNoReg = registrationMode === "OPEN_NO_REGISTRATION";
+  const canManageRoster = !isOpenNoReg;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return registrations.filter((row) => {
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
-      if (accountFilter === "active" && !row.accessKeyIssued) return false;
-      if (accountFilter === "pending" && row.accessKeyIssued) return false;
+      if (accountFilter === "active" && !row.accessCodeSent) return false;
+      if (accountFilter === "pending" && row.accessCodeSent) return false;
       if (!q) return true;
-      const text = [row.displayName, row.user?.email, row.institution, row.status]
+      const text = [
+        row.displayName,
+        row.user?.email,
+        row.institution,
+        row.status,
+        row.accessCode,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -117,7 +137,9 @@ export function ConferenceAdminRegistrationsTab({
   }, [conferenceId]);
 
   useEffect(() => {
-    load();
+    // Initial / conference-scoped fetch for the registrations roster.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional data load on mount/dependency change
+    void load();
   }, [load]);
 
   function openRow(row) {
@@ -232,6 +254,11 @@ export function ConferenceAdminRegistrationsTab({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not resend access code.");
       toast.success(data.message || "Access code emailed.");
+      if (data.accessKey) {
+        setSelected((prev) =>
+          prev ? { ...prev, accessCode: data.accessKey, accessKeyIssued: true } : prev,
+        );
+      }
       const listRes = await fetch(`/api/admin/conferences/${conferenceId}/registrations`);
       const listData = await listRes.json();
       if (listRes.ok) {
@@ -313,6 +340,82 @@ export function ConferenceAdminRegistrationsTab({
     }
   }
 
+  async function submitAddAttendee(force = addForce) {
+    setBusy(true);
+    setAddWarning("");
+    try {
+      const res = await fetch(`/api/admin/conferences/${conferenceId}/registrations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: addForm.firstName.trim(),
+          lastName: addForm.lastName.trim(),
+          email: addForm.email.trim() || undefined,
+          comment: addForm.comment.trim() || undefined,
+          forceDuplicate: force,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 409 && data.needsConfirmation) {
+        setAddWarning(data.message || "This person is already registered for this conference.");
+        setAddForce(Boolean(data.allowForce));
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Could not add attendee.");
+      toast.success(data.message || "Attendee added.");
+      setCreatedAccessKey(data.accessKey || null);
+      setAddOpen(false);
+      setAddForm(EMPTY_PERSON);
+      setAddForce(false);
+      setAddWarning("");
+      await load();
+      if (data.registration) setSelected(data.registration);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not add attendee.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitAssignRepresentative(force = repForce) {
+    if (!repTarget) return;
+    setBusy(true);
+    setRepWarning("");
+    try {
+      const res = await fetch(
+        `/api/admin/conferences/${conferenceId}/registrations/${repTarget.id}/representatives`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: repForm.firstName.trim(),
+            lastName: repForm.lastName.trim(),
+            email: repForm.email.trim() || undefined,
+            notes: repForm.notes.trim() || undefined,
+            forceExisting: force,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (res.status === 409 && data.needsConfirmation) {
+        setRepWarning(data.message || "Person already registered.");
+        setRepForce(true);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Could not assign representative.");
+      toast.success(data.message || "Representative assigned.");
+      setRepTarget(null);
+      setRepForm(EMPTY_PERSON);
+      setRepForce(false);
+      setRepWarning("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not assign representative.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading registrations…</p>;
   }
@@ -338,18 +441,36 @@ export function ConferenceAdminRegistrationsTab({
           value,
           label,
         }))}
-        searchPlaceholder="Search registrations…"
+        searchPlaceholder="Search name, email, or access code…"
         trailing={
-          isAdminUpload ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              icon={Upload}
-              onClick={() => setUploadOpen(true)}
-            >
-              Upload attendees
-            </Button>
+          canManageRoster ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                onClick={() => {
+                  setAddForm(EMPTY_PERSON);
+                  setAddForce(false);
+                  setAddWarning("");
+                  setAddOpen(true);
+                }}
+              >
+                Add attendee
+              </Button>
+              {isAdminUpload ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  icon={Upload}
+                  onClick={() => setUploadOpen(true)}
+                >
+                  Upload attendees
+                </Button>
+              ) : null}
+            </div>
           ) : null
         }
       />
@@ -357,8 +478,8 @@ export function ConferenceAdminRegistrationsTab({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {[
           { value: "all", label: "All access codes" },
-          { value: "active", label: "Code issued" },
-          { value: "pending", label: "No code yet" },
+          { value: "active", label: "Code sent" },
+          { value: "pending", label: "Not sent" },
         ].map((opt) => (
           <button
             key={opt.value}
@@ -408,7 +529,7 @@ export function ConferenceAdminRegistrationsTab({
       {registrations.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-foreground/80">
           {isAdminUpload
-            ? "No attendees yet. Upload a CSV list to add people and email access codes."
+            ? "No attendees yet. Upload a CSV list to add people. Access codes are not emailed until you send them."
             : "No registrations for this conference yet."}
         </p>
       ) : (
@@ -488,24 +609,36 @@ export function ConferenceAdminRegistrationsTab({
                       {row.institution || "—"}
                     </td>
                     <td className="cursor-pointer px-4 py-3" onClick={() => openRow(row)}>
-                      <span
-                        className={cn(
-                          "inline-block rounded-md px-2 py-0.5 text-xs font-medium",
-                          STATUS_CLASS[row.status] ?? STATUS_CLASS.PENDING,
-                        )}
-                      >
-                        {STATUS_LABELS[row.status] ?? row.status}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-block rounded-md px-2 py-0.5 text-xs font-medium",
+                            STATUS_CLASS[row.status] ?? STATUS_CLASS.PENDING,
+                          )}
+                        >
+                          {STATUS_LABELS[row.status] ?? row.status}
+                        </span>
+                        {row.isRepresented ? (
+                          <button
+                            type="button"
+                            className="rounded-md bg-primary-light px-2 py-0.5 text-xs font-medium text-primary hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRepsView(row);
+                            }}
+                          >
+                            Represented ({row.representatives?.length || 0})
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
-                    <td className="cursor-pointer px-4 py-3" onClick={() => openRow(row)}>
-                      <span
-                        className={cn(
-                          "text-xs font-medium",
-                          row.accessKeyIssued ? "text-primary" : "text-amber-800",
-                        )}
-                      >
-                        {row.accessKeyIssued ? "Issued" : "Pending"}
-                      </span>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <AccessCodeDisplay
+                        code={row.accessCode}
+                        issued={row.accessKeyIssued}
+                        sent={row.accessCodeSent}
+                        compact
+                      />
                     </td>
                     <td
                       className="cursor-pointer px-4 py-3 text-foreground/80"
@@ -532,6 +665,21 @@ export function ConferenceAdminRegistrationsTab({
                           }}
                         >
                           <Icon icon={Pencil} size="sm" />
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-primary hover:bg-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          aria-label={`Assign representative for ${row.displayName || row.user?.email || "attendee"}`}
+                          title="Assign representative"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRepTarget(row);
+                            setRepForm(EMPTY_PERSON);
+                            setRepForce(false);
+                            setRepWarning("");
+                          }}
+                        >
+                          <Icon icon={Users} size="sm" />
                         </button>
                         <button
                           type="button"
@@ -691,6 +839,19 @@ export function ConferenceAdminRegistrationsTab({
                   </button>
                   <button
                     type="button"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-primary hover:bg-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    onClick={() => {
+                      setRepTarget(selected);
+                      setRepForm(EMPTY_PERSON);
+                      setRepForce(false);
+                      setRepWarning("");
+                    }}
+                  >
+                    <Icon icon={Users} size="sm" />
+                    Assign representative
+                  </button>
+                  <button
+                    type="button"
                     className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-error hover:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/30"
                     onClick={() => {
                       setDeleteTarget(selected);
@@ -701,6 +862,33 @@ export function ConferenceAdminRegistrationsTab({
                     Delete registration
                   </button>
                 </div>
+                <div className="rounded-md border border-border bg-neutral-50/60 px-3 py-3">
+                  <p className="text-xs font-medium text-muted-foreground">Access code</p>
+                  <div className="mt-1.5">
+                    <AccessCodeDisplay
+                      code={selected.accessCode}
+                      issued={selected.accessKeyIssued}
+                      sent={selected.accessCodeSent}
+                    />
+                  </div>
+                </div>
+                {selected.isRepresented ? (
+                  <div className="rounded-md border border-primary/20 bg-primary-light/40 px-3 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">
+                        Represented by {selected.representatives?.length || 0} person
+                        {(selected.representatives?.length || 0) === 1 ? "" : "s"}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRepsView(selected)}
+                      >
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
                 <RegistrationDetailFields row={selected} />
               </>
             )}
@@ -859,6 +1047,201 @@ export function ConferenceAdminRegistrationsTab({
               disabled={busy || deleteConfirm !== "DELETE"}
             >
               {busy ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={addOpen}
+        onClose={() => !busy && setAddOpen(false)}
+        title="Add attendee"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground/80">
+            Add someone to this conference roster. Existing platform users who are not yet registered
+            here can be added. Duplicate means they are already registered for this conference.
+            Access codes are created but not emailed until you use Send access codes.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="First name"
+              requiredMark
+              value={addForm.firstName}
+              onChange={(e) => {
+                setAddForce(false);
+                setAddWarning("");
+                setAddForm((p) => ({ ...p, firstName: e.target.value }));
+              }}
+            />
+            <Input
+              label="Last name"
+              requiredMark
+              value={addForm.lastName}
+              onChange={(e) => {
+                setAddForce(false);
+                setAddWarning("");
+                setAddForm((p) => ({ ...p, lastName: e.target.value }));
+              }}
+            />
+            <div className="sm:col-span-2">
+              <Input
+                label="Email"
+                type="email"
+                hint="Recommended — needed later to email the access code"
+                value={addForm.email}
+                onChange={(e) => {
+                  setAddForce(false);
+                  setAddWarning("");
+                  setAddForm((p) => ({ ...p, email: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Input
+                label="Comment"
+                hint="Optional"
+                value={addForm.comment}
+                onChange={(e) => setAddForm((p) => ({ ...p, comment: e.target.value }))}
+              />
+            </div>
+          </div>
+          {addWarning ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {addWarning}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            {addForce ? (
+              <Button
+                variant="primary"
+                disabled={busy || !addForm.firstName.trim() || !addForm.lastName.trim()}
+                onClick={() => submitAddAttendee(true)}
+              >
+                {busy ? "Saving…" : "Add anyway"}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                disabled={
+                  busy ||
+                  !addForm.firstName.trim() ||
+                  !addForm.lastName.trim() ||
+                  Boolean(addWarning)
+                }
+                onClick={() => submitAddAttendee(false)}
+              >
+                {busy ? "Saving…" : "Add attendee"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(repTarget)}
+        onClose={() => !busy && setRepTarget(null)}
+        title="Assign representative"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground/80">
+            Assign someone to attend on behalf of{" "}
+            <strong>{repTarget?.displayName || repTarget?.user?.email}</strong>. A person can have
+            one or more representatives.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="First name"
+              requiredMark
+              value={repForm.firstName}
+              onChange={(e) => setRepForm((p) => ({ ...p, firstName: e.target.value }))}
+            />
+            <Input
+              label="Last name"
+              requiredMark
+              value={repForm.lastName}
+              onChange={(e) => setRepForm((p) => ({ ...p, lastName: e.target.value }))}
+            />
+            <div className="sm:col-span-2">
+              <Input
+                label="Email"
+                type="email"
+                hint="Optional but recommended"
+                value={repForm.email}
+                onChange={(e) => setRepForm((p) => ({ ...p, email: e.target.value }))}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Input
+                label="Notes"
+                value={repForm.notes}
+                onChange={(e) => setRepForm((p) => ({ ...p, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+          {repWarning ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {repWarning}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => setRepTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busy || !repForm.firstName.trim() || !repForm.lastName.trim()}
+              onClick={() => submitAssignRepresentative(repForce)}
+            >
+              {busy ? "Saving…" : repForce ? "Assign anyway" : "Assign representative"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(repsView)}
+        onClose={() => setRepsView(null)}
+        title={`Representatives — ${repsView?.displayName || repsView?.user?.email || ""}`}
+      >
+        <div className="space-y-3">
+          {(repsView?.representatives || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No representatives assigned.</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {(repsView?.representatives || []).map((rep) => (
+                <li key={rep.id} className="px-3 py-2.5">
+                  <p className="text-sm font-medium text-foreground">{rep.name}</p>
+                  <p className="text-xs text-muted-foreground">{rep.email}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setRepsView(null)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(createdAccessKey)}
+        onClose={() => setCreatedAccessKey(null)}
+        title="Access code ready"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-foreground/80">
+            Access code created but not emailed. Copy it to share manually, or use Send access codes
+            later.
+          </p>
+          <AccessCodeDisplay code={createdAccessKey} sent={false} />
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => setCreatedAccessKey(null)}>
+              Done
             </Button>
           </div>
         </div>

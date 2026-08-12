@@ -19,6 +19,9 @@ import {
 } from "@/lib/conferences/utils";
 import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
 import { normalizeGiftsSettings, applyGiftCategoryAvailability } from "@/lib/gifts/settings";
+import { normalizeAttendanceSettings } from "@/lib/attendance/settings";
+import { normalizeCertificateSettings } from "@/lib/certificates/settings";
+import { normalizeConferenceDays } from "@/lib/attendance/utils";
 
 const DEFAULT_IMAGE = "/assets/bg_image.jpg";
 
@@ -117,7 +120,7 @@ export function mapConferenceForUi(conference) {
     cfpCloseAt: conference.cfpCloseAt,
     registrationOpenAt: conference.registrationOpenAt,
     registrationCloseAt: conference.registrationCloseAt,
-    conferenceDays,
+    conferenceDays: normalizeConferenceDays(conferenceDays),
     timezone: conference.timezone ?? "Africa/Nairobi",
     cfpTopics,
     submissionGuidelines: conference.submissionGuidelines ?? "",
@@ -125,6 +128,10 @@ export function mapConferenceForUi(conference) {
     speakers,
     faqs,
     feedbackSettings: normalizeFeedbackSettings(conference.feedbackSettings),
+    attendanceSettings: normalizeAttendanceSettings(conference.attendanceSettings),
+    certificateSettings: normalizeCertificateSettings(conference.certificateSettings, {
+      totalDays: normalizeConferenceDays(conferenceDays).length || 1,
+    }),
     giftsSettings: applyGiftCategoryAvailability(
       normalizeGiftsSettings(conference.giftsSettings),
       speakers,

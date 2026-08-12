@@ -161,7 +161,7 @@ export async function POST(request, { params }) {
         isNewUser: result.isNewUser,
         emailSent: result.emailSent,
         status: "CONFIRMED",
-        redirect: "/login?mode=access",
+        redirect: "/access",
         message: `You are registered for ${conference.title}. Check your email for your access code, then sign in under Attendee access.${emailNote}`,
       });
     }

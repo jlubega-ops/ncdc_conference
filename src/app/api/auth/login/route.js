@@ -61,7 +61,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error:
-            "Invalid email or password. Attendees sign in with an access code (Attendee access).",
+            "Invalid email or password. Attendees sign in with an access code at /access.",
         },
         { status: 401 },
       );
@@ -72,9 +72,9 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error:
-            "Attendees sign in with an access code, not a password. Use the Attendee access tab.",
+            "Attendees sign in with an access code, not a password. Use the access code page.",
           code: "ATTENDEE_USE_ACCESS_KEY",
-          redirect: "/login?mode=access",
+          redirect: "/access",
         },
         { status: 403 },
       );

@@ -7,26 +7,35 @@ import { formatPresentationDayLabel } from "./presentation-days";
 
 /**
  * @param {any} row
+ * @param {{ includeFileAccess?: boolean }} [opts]
  */
-function mapResource(row) {
+function mapResource(row, opts = {}) {
+  const includeFileAccess = opts.includeFileAccess !== false;
   return {
     id: row.id,
     type: row.type,
     title: row.title,
+    author: row.author ?? null,
     description: row.description,
-    fileId: row.fileId,
     fileName: row.fileName,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt,
-    downloadUrl: `/api/files/conference-resources/${row.fileId}`,
+    ...(includeFileAccess
+      ? {
+          fileId: row.fileId,
+          downloadUrl: `/api/files/conference-resources/${row.fileId}`,
+        }
+      : {}),
   };
 }
 
 /**
  * @param {any} row
  * @param {Array<{ date: string; dayIndex: number }>} [days]
+ * @param {{ includeFileAccess?: boolean }} [opts]
  */
-function mapPresentation(row, days = []) {
+function mapPresentation(row, days = [], opts = {}) {
+  const includeFileAccess = opts.includeFileAccess !== false;
   const sessionLabel = row.sessionLabel ? String(row.sessionLabel).trim() : null;
   const day = days.find((d) => d.date === sessionLabel) || null;
   return {
@@ -36,34 +45,41 @@ function mapPresentation(row, days = []) {
     speakerTitle: row.speakerTitle,
     sessionLabel,
     description: row.description,
-    fileId: row.fileId,
     fileName: row.fileName,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt,
-    downloadUrl: row.fileId ? `/api/files/conference-resources/${row.fileId}` : null,
     dayIndex: day?.dayIndex ?? null,
     dayLabel: day
       ? formatPresentationDayLabel(day.date, day.dayIndex)
       : sessionLabel || "Unassigned",
+    hasFile: Boolean(row.fileId),
+    ...(includeFileAccess
+      ? {
+          fileId: row.fileId,
+          downloadUrl: row.fileId ? `/api/files/conference-resources/${row.fileId}` : null,
+        }
+      : {}),
   };
 }
 
 /**
  * @param {string} conferenceId
  * @param {string} type
+ * @param {{ includeFileAccess?: boolean }} [opts]
  */
-export async function listConferenceResources(conferenceId, type) {
+export async function listConferenceResources(conferenceId, type, opts = {}) {
   const rows = await prisma.conferenceResource.findMany({
     where: { conferenceId, type },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
-  return rows.map(mapResource);
+  return rows.map((row) => mapResource(row, opts));
 }
 
 /**
  * @param {string} conferenceId
+ * @param {{ includeFileAccess?: boolean }} [opts]
  */
-export async function listConferencePresentations(conferenceId) {
+export async function listConferencePresentations(conferenceId, opts = {}) {
   const [rows, conference] = await Promise.all([
     prisma.conferencePresentation.findMany({
       where: { conferenceId },
@@ -75,7 +91,7 @@ export async function listConferencePresentations(conferenceId) {
     }),
   ]);
   const days = normalizeConferenceDays(conference?.conferenceDays);
-  return rows.map((row) => mapPresentation(row, days));
+  return rows.map((row) => mapPresentation(row, days, opts));
 }
 
 /**
@@ -154,6 +170,7 @@ export async function createConferenceResource(conferenceId, type, form) {
     throw new Error("Invalid resource type.");
   }
   const title = String(form.get("title") ?? "").trim();
+  const author = String(form.get("author") ?? "").trim() || null;
   const description = String(form.get("description") ?? "").trim() || null;
   const file = form.get("file");
   if (!title) throw new Error("Title is required.");
@@ -164,10 +181,44 @@ export async function createConferenceResource(conferenceId, type, form) {
       conferenceId,
       type,
       title,
+      author,
       description,
       fileId,
       fileName,
     },
+  });
+  return mapResource(row);
+}
+
+/**
+ * @param {string} conferenceId
+ * @param {string} resourceId
+ * @param {FormData} form
+ */
+export async function updateConferenceResource(conferenceId, resourceId, form) {
+  const existing = await prisma.conferenceResource.findFirst({
+    where: { id: resourceId, conferenceId },
+  });
+  if (!existing) throw new Error("Resource not found.");
+
+  const title = String(form.get("title") ?? "").trim();
+  if (!title) throw new Error("Title is required.");
+  const author = String(form.get("author") ?? "").trim() || null;
+  const description = String(form.get("description") ?? "").trim() || null;
+  const file = form.get("file");
+
+  /** @type {{ title: string; author: string | null; description: string | null; fileId?: string; fileName?: string }} */
+  const data = { title, author, description };
+
+  if (file instanceof File && file.size > 0) {
+    const saved = await saveResourceFile(file);
+    data.fileId = saved.fileId;
+    data.fileName = saved.fileName;
+  }
+
+  const row = await prisma.conferenceResource.update({
+    where: { id: resourceId },
+    data,
   });
   return mapResource(row);
 }
@@ -283,6 +334,34 @@ export async function updateConferenceSpeakers(conferenceId, speakers) {
     data: { speakers: normalized },
   });
   return normalized;
+}
+
+/**
+ * Resolve a member-facing file by resource or presentation id (not raw fileId).
+ * @param {string} conferenceId
+ * @param {"resource" | "presentation"} kind
+ * @param {string} itemId
+ */
+export async function resolveMemberContentFile(conferenceId, kind, itemId) {
+  if (kind === "resource") {
+    const row = await prisma.conferenceResource.findFirst({
+      where: { id: itemId, conferenceId },
+      select: { fileId: true, fileName: true, title: true },
+    });
+    if (!row?.fileId) return null;
+    return { fileId: row.fileId, fileName: row.fileName || row.title || itemId };
+  }
+
+  if (kind === "presentation") {
+    const row = await prisma.conferencePresentation.findFirst({
+      where: { id: itemId, conferenceId },
+      select: { fileId: true, fileName: true, title: true },
+    });
+    if (!row?.fileId) return null;
+    return { fileId: row.fileId, fileName: row.fileName || row.title || itemId };
+  }
+
+  return null;
 }
 
 /**

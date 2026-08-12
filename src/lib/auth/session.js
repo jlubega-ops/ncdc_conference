@@ -4,28 +4,31 @@ import { prisma } from "@/lib/prisma";
 import { getDistinctRolesForSwitch, getHighestRole, STAFF_ROLES } from "@/lib/auth/roles";
 import { getPermissionsForRole } from "@/lib/auth/permissions";
 import { getProfileFromUser } from "@/lib/users/profile";
+import {
+  ATTENDEE_SESSION_TTL_MS,
+  STAFF_IDLE_TTL_MS,
+  getSessionTtlMsForRole,
+} from "@/lib/auth/session-config";
 
 export const SESSION_COOKIE = "ncdc_session";
 
-/** Staff (superadmin / conference admin / reviewer): idle timeout */
-export const STAFF_IDLE_TTL_MS = 60 * 60 * 1000; // 1 hour
-/** Attendee access session: idle timeout */
-export const ATTENDEE_IDLE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
-/** Skip DB touch if expiry was extended this recently */
-const SESSION_TOUCH_THROTTLE_MS = 2 * 60 * 1000; // 2 minutes
+export { ATTENDEE_SESSION_TTL_MS, STAFF_IDLE_TTL_MS };
+
+/** Skip DB touch if staff expiry was extended this recently */
+const SESSION_TOUCH_THROTTLE_MS = 60 * 1000; // 1 minute
 
 /**
- * Idle TTL for the active role (sliding window — activity extends the session).
+ * Session lifetime for the active role.
+ * Staff: sliding idle window (activity extends).
+ * Attendees: absolute duration from sign-in (not extended by activity).
  * @param {string} role
  */
 export function getSessionIdleTtlMs(role) {
-  if (role === "ATTENDEE") return ATTENDEE_IDLE_TTL_MS;
-  if (STAFF_ROLES.includes(role)) return STAFF_IDLE_TTL_MS;
-  return STAFF_IDLE_TTL_MS;
+  return getSessionTtlMsForRole(role, STAFF_ROLES);
 }
 
 /**
- * Cookie maxAge in seconds for a role (matches idle TTL).
+ * Cookie maxAge in seconds for a role.
  * @param {string} role
  */
 export function getSessionCookieMaxAgeSeconds(role) {
@@ -120,10 +123,15 @@ export async function getSessionTokenFromCookie() {
 }
 
 /**
- * Extend session expiry on activity (throttled). Mutates session.expiresAt in memory when updated.
+ * Extend staff session expiry on activity (throttled).
+ * Attendee sessions are absolute (5 days from sign-in) and are not slid.
  * @param {{ id: string; activeRole: string; expiresAt: Date }} session
  */
 async function touchSessionIfNeeded(session) {
+  if (session.activeRole === "ATTENDEE") {
+    return session;
+  }
+
   const ttlMs = getSessionIdleTtlMs(session.activeRole);
   const nextExpiry = new Date(Date.now() + ttlMs);
   const expiresAtMs = new Date(session.expiresAt).getTime();

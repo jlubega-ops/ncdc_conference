@@ -6,11 +6,19 @@ import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
 /** Uppercase charset without ambiguous characters (0, O, 1, I, L). */
 export const ACCESS_KEY_CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-/** {ORG}/CONF{YYYY}/{SUFFIX} — all caps */
-const ACCESS_KEY_PATTERN = /^([A-Z0-9]{2,12})\/CONF(\d{4})\/([A-Z2-9]+)$/;
+/** Short memorable codes (length 4). */
+export const ACCESS_CODE_LENGTH = 4;
+
+/** Legacy format: {ORG}/CONF{YYYY}/{SUFFIX} — all caps */
+const LEGACY_ACCESS_KEY_PATTERN = /^([A-Z0-9]{2,12})\/CONF(\d{4})\/([A-Z2-9]+)$/;
+
+/** New short codes: 4 safe alphanumeric characters. */
+const SHORT_ACCESS_CODE_PATTERN = new RegExp(
+  `^[${ACCESS_KEY_CHARSET}]{${ACCESS_CODE_LENGTH}}$`,
+);
 
 /**
- * Deterministic lookup token — never store the plaintext access key.
+ * Deterministic lookup token — used for legacy hashed lookup rows.
  * @param {string} fullKey
  */
 export function accessKeyLookupToken(fullKey) {
@@ -31,13 +39,33 @@ export function accessKeyLookupToken(fullKey) {
 /**
  * @param {number} length
  */
-export function generateAccessKeySuffix(length = 8) {
+export function generateAccessKeySuffix(length = ACCESS_CODE_LENGTH) {
   const bytes = randomBytes(length);
   let result = "";
   for (let i = 0; i < length; i += 1) {
     result += ACCESS_KEY_CHARSET[bytes[i] % ACCESS_KEY_CHARSET.length];
   }
   return result;
+}
+
+/**
+ * Generate a platform-wide unique short access code.
+ * @param {number} [length]
+ * @param {number} [maxAttempts]
+ */
+export async function generateUniqueAccessCode(
+  length = ACCESS_CODE_LENGTH,
+  maxAttempts = 40,
+) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const code = generateAccessKeySuffix(length);
+    const existing = await prisma.conferenceAccessKey.findUnique({
+      where: { displayCode: code },
+      select: { id: true },
+    });
+    if (!existing) return code;
+  }
+  throw new Error("Could not generate a unique access code. Try again.");
 }
 
 /**
@@ -50,21 +78,50 @@ export function formatAccessKey(orgShort, year, suffix) {
   return `${org}/CONF${year}/${String(suffix).toUpperCase()}`;
 }
 
-/** Always uppercase for one-time email delivery only — never persist or show in admin UI. */
+/** @deprecated Prefer short displayCode; kept for legacy email text. */
 export function displayAccessKey(orgShort, year, suffix) {
   return formatAccessKey(orgShort, year, suffix);
 }
 
 /**
+ * Normalize user input for access-code login.
  * @param {string} input
- * @returns {{ org: string, year: number, suffix: string, fullKey: string } | null}
+ */
+export function normalizeAccessCodeInput(input) {
+  return String(input ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+/**
+ * @param {string} input
+ * @returns {{
+ *   kind: "short" | "legacy";
+ *   code: string;
+ *   org?: string;
+ *   year?: number;
+ *   suffix?: string;
+ *   fullKey: string;
+ * } | null}
  */
 export function parseAccessKey(input) {
-  if (!input?.trim()) return null;
-  const normalized = input.trim().toUpperCase().replace(/\s+/g, "");
-  const match = normalized.match(ACCESS_KEY_PATTERN);
+  const normalized = normalizeAccessCodeInput(input);
+  if (!normalized) return null;
+
+  if (SHORT_ACCESS_CODE_PATTERN.test(normalized)) {
+    return {
+      kind: "short",
+      code: normalized,
+      fullKey: normalized,
+    };
+  }
+
+  const match = normalized.match(LEGACY_ACCESS_KEY_PATTERN);
   if (!match) return null;
   return {
+    kind: "legacy",
+    code: match[3],
     org: match[1],
     year: Number.parseInt(match[2], 10),
     suffix: match[3],
@@ -112,20 +169,19 @@ export async function createConferenceAccessKeyRecord({
   email,
   year,
   userId,
-  organiserShortName,
+  organiserShortName: _organiserShortName,
 }) {
-  const suffix = generateAccessKeySuffix(8);
-  const fullKey = formatAccessKey(organiserShortName, year, suffix);
-  const keyHash = await hashAccessKey(fullKey);
-  const lookup = accessKeyLookupToken(fullKey);
+  const displayCode = await generateUniqueAccessCode();
+  const keyHash = await hashAccessKey(displayCode);
 
   const record = await prisma.conferenceAccessKey.create({
     data: {
       conferenceId,
       email: String(email || "").trim().toLowerCase(),
       keyHash,
-      // Store HMAC lookup token only — never plaintext suffix or full key.
-      keySuffix: lookup,
+      displayCode,
+      // Keep keySuffix aligned for simple lookups / older query paths.
+      keySuffix: displayCode,
       conferenceYear: year,
       userId: userId ?? null,
       label: "issued",
@@ -134,8 +190,9 @@ export async function createConferenceAccessKeyRecord({
 
   return {
     record,
-    fullKey,
-    displayKey: displayAccessKey(organiserShortName, year, suffix),
-    suffix,
+    fullKey: displayCode,
+    displayKey: displayCode,
+    suffix: displayCode,
+    displayCode,
   };
 }

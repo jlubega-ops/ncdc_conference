@@ -159,7 +159,8 @@ export function validateAttendeeUploadRows(rows) {
 }
 
 /**
- * Upload attendees for ADMIN_UPLOAD conferences (CONFIRMED + access key email).
+ * Upload attendees for ADMIN_UPLOAD conferences (CONFIRMED).
+ * Access codes are not emailed automatically — use Send access codes later.
  * @param {{ conferenceId: string; rows: ReturnType<typeof validateAttendeeUploadRows>; allowErrors?: boolean }} params
  */
 export async function confirmAttendeeUpload({ conferenceId, rows, allowErrors = true }) {
@@ -269,11 +270,22 @@ export async function confirmAttendeeUpload({ conferenceId, rows, allowErrors = 
         });
       }
 
-      const keyResult = await issueAndEmailAccessKey({
-        user,
-        conference,
+      // Create access code if missing; never email on upload.
+      const existingKey = await prisma.conferenceAccessKey.findFirst({
+        where: {
+          conferenceId,
+          userId: user.id,
+          revokedAt: null,
+        },
       });
-      if (keyResult.emailSent) results.emailed += 1;
+      if (!existingKey) {
+        await issueAndEmailAccessKey({
+          user: { id: user.id, email: user.email, name: user.name },
+          conference,
+          sendEmail: false,
+          revokeExisting: false,
+        });
+      }
     } catch (err) {
       results.errors.push({
         email: row.email,

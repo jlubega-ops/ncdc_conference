@@ -118,6 +118,8 @@ function buildUpdatePayload(input) {
     speakers: cascaded.speakers,
     faqs: Array.isArray(input.faqs) ? input.faqs : [],
     feedbackSettings: input.feedbackSettings ?? null,
+    attendanceSettings: input.attendanceSettings ?? null,
+    certificateSettings: input.certificateSettings ?? null,
     giftsSettings: input.giftsSettings ?? null,
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,

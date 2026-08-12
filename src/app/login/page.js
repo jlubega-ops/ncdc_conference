@@ -1,26 +1,44 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { LoginPanel } from "@/components/auth/LoginPanel";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
 import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
 
 export const metadata = {
   title: "Sign in | Conference Management",
-  description: "Sign in with an access code or staff credentials.",
+  description: "Staff sign in with email and password.",
 };
 
 export default async function LoginPage({ searchParams }) {
   await redirectIfAuthenticated();
 
   const params = await searchParams;
+  const mode = String(params?.mode || "").toLowerCase();
+
+  // Legacy links used /login?mode=access — attendees now use /access.
+  // Conference deep links should also use access-code sign-in.
+  const redirectParam = params?.redirect ? String(params.redirect) : "";
+  if (
+    mode === "access" ||
+    mode === "attendee" ||
+    redirectParam.startsWith("/conferences/")
+  ) {
+    const qs = new URLSearchParams();
+    if (params?.redirect) qs.set("redirect", String(params.redirect));
+    if (params?.reason) qs.set("reason", String(params.reason));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    redirect(`/access${suffix}`);
+  }
+
   const redirectTo = params?.redirect;
   const expired = params?.reason === "session_expired";
 
   return (
     <PublicFormLayout
       maxWidth="md"
-      eyebrow="Account"
+      eyebrow="Staff"
       title="Sign in"
-      subtitle="Attendees use an access code to open their conference. Staff use email and password."
+      subtitle="Administrators and reviewers sign in with email and password. Attendees use an access code."
       footer={
         <Link href="/" className="font-medium hover:text-primary">
           ← Back to home

@@ -75,6 +75,8 @@ export async function duplicateConference(conferenceId, createdById) {
       speakers: source.speakers ?? undefined,
       faqs: source.faqs ?? undefined,
       feedbackSettings: source.feedbackSettings ?? undefined,
+      attendanceSettings: source.attendanceSettings ?? undefined,
+      certificateSettings: source.certificateSettings ?? undefined,
       giftsSettings: source.giftsSettings ?? undefined,
       requiresPayment: source.requiresPayment,
       paymentDetails: source.paymentDetails ?? undefined,

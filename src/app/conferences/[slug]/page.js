@@ -13,6 +13,26 @@ import {
 } from "@/lib/conferences/service";
 import { getMemberContentAvailability } from "@/lib/conference-content/service";
 
+const AUTH_REQUIRED_TABS = new Set([
+  "attendance",
+  "certificate",
+  "certificates",
+  "feedback",
+  "materials",
+]);
+
+/**
+ * @param {string} slug
+ * @param {Record<string, string | string[] | undefined>} query
+ */
+function conferenceReturnPath(slug, query) {
+  const params = new URLSearchParams();
+  const tab = typeof query?.tab === "string" ? query.tab : "";
+  if (tab) params.set("tab", tab);
+  const qs = params.toString();
+  return qs ? `/conferences/${slug}?${qs}` : `/conferences/${slug}`;
+}
+
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const conference = await getPublishedConferenceBySlug(slug);
@@ -32,6 +52,14 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
   const conference = await getPublishedConferenceBySlug(slug);
 
   if (!conference) notFound();
+
+  const returnPath = conferenceReturnPath(slug, query);
+  const requestedTab =
+    typeof query?.tab === "string"
+      ? query.tab === "presentations"
+        ? "materials"
+        : query.tab
+      : null;
 
   let registrationStatus = null;
   let registration = null;
@@ -71,14 +99,18 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
     const hasAccess = registrationStatus === "CONFIRMED" || isManager;
     if (!hasAccess) {
       if (!isAuthenticated) {
-        redirect(`/login?mode=access&redirect=${encodeURIComponent(`/conferences/${slug}`)}`);
+        redirect(`/access?redirect=${encodeURIComponent(returnPath)}`);
       }
       notFound();
     }
   }
 
-  const initialTab = typeof query?.tab === "string" ? query.tab : null;
+  // Deep links to member-only sections require an access code when logged out.
+  if (!isAuthenticated && requestedTab && AUTH_REQUIRED_TABS.has(requestedTab)) {
+    redirect(`/access?redirect=${encodeURIComponent(returnPath)}`);
+  }
 
+  const initialTab = requestedTab;
   const isManager = session ? canManageConference(session, conference.id) : false;
   const isConfirmedAttendee = registrationStatus === "CONFIRMED";
   const canAccessMemberContent = Boolean(isManager || isConfirmedAttendee);
@@ -94,7 +126,7 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
 
   return (
     <div className="bg-background">
-      <ConferenceDetailHero conference={conference} />
+      <ConferenceDetailHero conference={conference} compact={isConfirmedAttendee} />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <Suspense fallback={<div className="py-8 text-sm text-muted-foreground">Loading…</div>}>

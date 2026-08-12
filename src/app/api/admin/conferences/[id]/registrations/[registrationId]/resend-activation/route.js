@@ -26,6 +26,8 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       ok: true,
       message: result.message || "Access code emailed.",
+      accessKey: result.accessKey || null,
+      emailSent: result.emailSent !== false,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not resend access code.";

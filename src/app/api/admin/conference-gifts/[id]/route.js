@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import {
+  addGiftRecipientAndIssue,
   getConferenceGiftsAdminData,
   giftsReportToCsv,
   upsertGiftIssuance,
@@ -14,7 +15,6 @@ export async function GET(request, { params }) {
   if (!access.ok) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
-  const session = access.session;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -57,11 +57,55 @@ export async function POST(request, { params }) {
   }
 
   try {
+    const action = String(body.action || "").trim();
+    const items = body.items && typeof body.items === "object" ? body.items : {};
+
+    if (action === "addAndIssue") {
+      const result = await addGiftRecipientAndIssue({
+        conferenceId: id,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        comment: body.comment,
+        acknowledged: Boolean(body.acknowledged || body.forceDuplicate),
+        items,
+        issuedById: session.user?.id ?? null,
+      });
+
+      if (result.needsConfirmation) {
+        return NextResponse.json(result, { status: 409 });
+      }
+
+      await logActivity({
+        session,
+        request,
+        action: ACTIVITY_ACTIONS.GIFT_ISSUE,
+        description: result.registered
+          ? "Issued gifts to registered participant"
+          : "Added gifts-only recipient and issued awards",
+        resourceType: "gift",
+        resourceId: result.issuance?.id ?? result.recipientKey,
+        conferenceId: id,
+        metadata: {
+          category: "participants",
+          giftsOnly: !result.registered,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        message: result.message,
+        issuance: result.issuance,
+        recipientKey: result.recipientKey,
+        registered: result.registered,
+      });
+    }
+
     const issuance = await upsertGiftIssuance({
       conferenceId: id,
       recipientKey: String(body.recipientKey || "").trim(),
       category: String(body.category || "").trim(),
-      items: body.items && typeof body.items === "object" ? body.items : {},
+      items,
       issuedById: session.user?.id ?? null,
     });
     await logActivity({

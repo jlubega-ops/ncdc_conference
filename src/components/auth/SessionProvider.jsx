@@ -14,11 +14,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { ForcedPasswordChangeDialog } from "@/components/auth/ForcedPasswordChangeDialog";
 import { RoleSwitchOverlay } from "@/components/auth/RoleSwitchOverlay";
 import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
+import { STAFF_IDLE_TTL_MS } from "@/lib/auth/session-config";
 
 const SessionContext = createContext(null);
 
-/** How often we may ping the server while the user is actively using the app */
-const IDLE_KEEPALIVE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+/** How often active staff sessions ping the server to slide idle expiry */
+const STAFF_KEEPALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+/** How often we check whether staff have been idle too long */
+const STAFF_IDLE_CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds
+/** Attendees: occasional session check (absolute 5-day expiry; no idle logout) */
+const ATTENDEE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Auth endpoints that return 401 for bad credentials — do not treat as session expiry.
@@ -74,7 +79,12 @@ export function SessionProvider({ children, initialSession = null }) {
         typeof window !== "undefined"
           ? `${window.location.pathname}${window.location.search}`
           : pathname || "/dashboard";
-      const loginUrl = `/login?redirect=${encodeURIComponent(redirectPath)}&reason=${encodeURIComponent(reason)}`;
+      // Conference deep links should return via access-code sign-in, not staff login.
+      const useAccess =
+        redirectPath.startsWith("/conferences/") ||
+        pathname?.startsWith("/conferences/");
+      const base = useAccess ? "/access" : "/login";
+      const loginUrl = `${base}?redirect=${encodeURIComponent(redirectPath)}&reason=${encodeURIComponent(reason)}`;
       startTransition(() => {
         router.push(loginUrl);
         router.refresh();
@@ -170,9 +180,13 @@ export function SessionProvider({ children, initialSession = null }) {
     };
   }, [handleSessionExpired, initialSession]);
 
-  // Sliding idle expiry keepalive + immediate check after long idle
+  // Sliding idle expiry for staff; absolute lifetime check for attendees
   useEffect(() => {
     if (!session) return undefined;
+
+    const isAttendee = session.activeRole === "ATTENDEE";
+    lastTouchRef.current = Date.now();
+    activityRef.current = true;
 
     const checkSession = async () => {
       try {
@@ -187,9 +201,14 @@ export function SessionProvider({ children, initialSession = null }) {
 
     const markActive = () => {
       activityRef.current = true;
-      const idleFor = Date.now() - lastTouchRef.current;
-      // If idle longer than keepalive window, verify session immediately on next interaction
-      if (lastTouchRef.current > 0 && idleFor >= IDLE_KEEPALIVE_INTERVAL_MS) {
+      const now = Date.now();
+      const idleFor = now - lastTouchRef.current;
+      lastTouchRef.current = now;
+      // Staff: if returning after a long idle gap, verify immediately
+      if (
+        !isAttendee &&
+        idleFor >= STAFF_IDLE_TTL_MS
+      ) {
         void checkSession();
       }
     };
@@ -202,28 +221,48 @@ export function SessionProvider({ children, initialSession = null }) {
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
         activityRef.current = true;
+        lastTouchRef.current = Date.now();
         void checkSession();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      if (!activityRef.current) return;
+    // Staff: force logout after 30 minutes with no interaction
+    const idleCheckId = isAttendee
+      ? null
+      : window.setInterval(() => {
+          if (document.visibilityState !== "visible") return;
+          const idleFor = Date.now() - lastTouchRef.current;
+          if (idleFor >= STAFF_IDLE_TTL_MS) {
+            void handleSessionExpired();
+          }
+        }, STAFF_IDLE_CHECK_INTERVAL_MS);
 
+    // Keepalive / periodic verify
+    const keepaliveId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+
+      if (isAttendee) {
+        void checkSession();
+        return;
+      }
+
+      // Staff: only slide expiry when the user has been interacting
+      if (!activityRef.current) return;
       const elapsed = Date.now() - lastTouchRef.current;
-      if (elapsed < IDLE_KEEPALIVE_INTERVAL_MS - 5_000) return;
+      if (elapsed > STAFF_KEEPALIVE_INTERVAL_MS) return;
 
       activityRef.current = false;
       void checkSession();
-    }, IDLE_KEEPALIVE_INTERVAL_MS);
+    }, isAttendee ? ATTENDEE_CHECK_INTERVAL_MS : STAFF_KEEPALIVE_INTERVAL_MS);
 
     return () => {
       for (const event of events) {
         window.removeEventListener(event, markActive);
       }
       document.removeEventListener("visibilitychange", onVisibility);
-      window.clearInterval(intervalId);
+      if (idleCheckId) window.clearInterval(idleCheckId);
+      window.clearInterval(keepaliveId);
     };
   }, [session, refreshSession, handleSessionExpired]);
 

@@ -67,6 +67,15 @@ import {
 } from "@/lib/feedback/questions";
 import { createId } from "@/lib/feedback/ids";
 import {
+  DEFAULT_ATTENDANCE_SETTINGS,
+  normalizeAttendanceSettings,
+} from "@/lib/attendance/settings";
+import {
+  DEFAULT_CERTIFICATE_SETTINGS,
+  normalizeCertificateSettings,
+} from "@/lib/certificates/settings";
+import { normalizeConferenceDays } from "@/lib/attendance/utils";
+import {
   DEFAULT_GIFTS_SETTINGS,
   GIFT_CATEGORIES,
   applyGiftCategoryAvailability,
@@ -101,13 +110,23 @@ function emptyConference() {
     cfpCloseAt: "",
     registrationOpenAt: "",
     registrationCloseAt: "",
-    conferenceDays: [{ date: "", startTime: "09:00", endTime: "17:00" }],
+    conferenceDays: [
+      {
+        date: "",
+        startTime: "09:00",
+        endTime: "17:00",
+        attendanceStartTime: "09:00",
+        attendanceEndTime: "17:00",
+      },
+    ],
     cfpTopics: [],
     submissionGuidelines: "",
     programme: [],
     speakers: [],
     faqs: [],
     feedbackSettings: normalizeFeedbackSettings(DEFAULT_FEEDBACK_SETTINGS),
+    attendanceSettings: normalizeAttendanceSettings(DEFAULT_ATTENDANCE_SETTINGS),
+    certificateSettings: normalizeCertificateSettings(DEFAULT_CERTIFICATE_SETTINGS),
     giftsSettings: normalizeGiftsSettings(DEFAULT_GIFTS_SETTINGS),
     requiresPayment: false,
     paymentDetails: emptyPaymentDetails(),
@@ -218,6 +237,10 @@ function normalizeForSubmit(form, publicationStatusOverride) {
     breakoutRooms: normalizeBreakoutRooms(form.breakoutRooms, { forEditor: true }),
     contacts: normalizeContacts(form.contacts),
     feedbackSettings: normalizeFeedbackSettings(form.feedbackSettings),
+    attendanceSettings: normalizeAttendanceSettings(form.attendanceSettings),
+    certificateSettings: normalizeCertificateSettings(form.certificateSettings, {
+      totalDays: conferenceDays.length || 1,
+    }),
     giftsSettings: applyGiftCategoryAvailability(
       normalizeGiftsSettings(form.giftsSettings),
       cascaded.speakers,
@@ -313,6 +336,14 @@ function fieldBelongsToSection(key, sectionId) {
   }
   if (sectionId === "programme") return key.startsWith("programme.");
   if (sectionId === "speakers") return key.startsWith("speakers.");
+  if (sectionId === "attendance") {
+    return (
+      key.startsWith("attendanceSettings") ||
+      key.startsWith("certificateSettings") ||
+      key.includes("attendanceStartTime") ||
+      key.includes("attendanceEndTime")
+    );
+  }
   if (sectionId === "feedback") return key.startsWith("feedbackSettings");
   if (sectionId === "gifts") return key.startsWith("giftsSettings");
   if (sectionId === "faqs") return key.startsWith("faqs.");
@@ -445,14 +476,30 @@ export function ConferenceManager({ conferences }) {
       timezone: conf.timezone || "Africa/Nairobi",
       conferenceDays:
         Array.isArray(conf.conferenceDays) && conf.conferenceDays.length > 0
-          ? conf.conferenceDays
-          : [{ date: "", startTime: "09:00", endTime: "17:00" }],
+          ? normalizeConferenceDays(conf.conferenceDays).map((day) => ({
+              ...day,
+              // Keep editor fields if empty date rows were stored loosely
+              date: day.date,
+            }))
+          : [
+              {
+                date: "",
+                startTime: "09:00",
+                endTime: "17:00",
+                attendanceStartTime: "09:00",
+                attendanceEndTime: "17:00",
+              },
+            ],
       cfpTopics: Array.isArray(conf.cfpTopics) ? conf.cfpTopics : [],
       subThemes: Array.isArray(conf.subThemes) ? conf.subThemes : [],
       programme: Array.isArray(conf.programme) ? conf.programme : [],
       speakers: mapSpeakersForForm(conf.speakers),
       faqs: mapFaqsForForm(conf.faqs),
       feedbackSettings: normalizeFeedbackSettings(conf.feedbackSettings),
+      attendanceSettings: normalizeAttendanceSettings(conf.attendanceSettings),
+      certificateSettings: normalizeCertificateSettings(conf.certificateSettings, {
+        totalDays: normalizeConferenceDays(conf.conferenceDays).length || 1,
+      }),
       giftsSettings: normalizeGiftsSettings(conf.giftsSettings),
       ...mapConferenceFormExtras(conf),
     });
@@ -517,14 +564,26 @@ export function ConferenceManager({ conferences }) {
       timezone: conf.timezone || "Africa/Nairobi",
       conferenceDays:
         Array.isArray(conf.conferenceDays) && conf.conferenceDays.length > 0
-          ? conf.conferenceDays
-          : [{ date: "", startTime: "09:00", endTime: "17:00" }],
+          ? normalizeConferenceDays(conf.conferenceDays)
+          : [
+              {
+                date: "",
+                startTime: "09:00",
+                endTime: "17:00",
+                attendanceStartTime: "09:00",
+                attendanceEndTime: "17:00",
+              },
+            ],
       cfpTopics: Array.isArray(conf.cfpTopics) ? conf.cfpTopics : [],
       subThemes: Array.isArray(conf.subThemes) ? conf.subThemes : [],
       programme: Array.isArray(conf.programme) ? conf.programme : [],
       speakers: mapSpeakersForForm(conf.speakers),
       faqs: mapFaqsForForm(conf.faqs),
       feedbackSettings: normalizeFeedbackSettings(conf.feedbackSettings),
+      attendanceSettings: normalizeAttendanceSettings(conf.attendanceSettings),
+      certificateSettings: normalizeCertificateSettings(conf.certificateSettings, {
+        totalDays: normalizeConferenceDays(conf.conferenceDays).length || 1,
+      }),
       giftsSettings: normalizeGiftsSettings(conf.giftsSettings),
       ...mapConferenceFormExtras(conf),
     };
@@ -585,7 +644,13 @@ export function ConferenceManager({ conferences }) {
       ...prev,
       conferenceDays: [
         ...(Array.isArray(prev.conferenceDays) ? prev.conferenceDays : []),
-        { date: "", startTime: "09:00", endTime: "17:00" },
+        {
+          date: "",
+          startTime: "09:00",
+          endTime: "17:00",
+          attendanceStartTime: "09:00",
+          attendanceEndTime: "17:00",
+        },
       ],
     }));
   }
@@ -599,7 +664,15 @@ export function ConferenceManager({ conferences }) {
     });
     setEditing((prev) => {
       const nextDays = Array.isArray(prev.conferenceDays) ? [...prev.conferenceDays] : [];
-      nextDays[index] = { ...(nextDays[index] ?? {}), [key]: value };
+      const prevDay = nextDays[index] ?? {};
+      const current = { ...prevDay, [key]: value };
+      if (key === "startTime" && (!prevDay.attendanceStartTime || prevDay.attendanceStartTime === prevDay.startTime)) {
+        current.attendanceStartTime = value;
+      }
+      if (key === "endTime" && (!prevDay.attendanceEndTime || prevDay.attendanceEndTime === prevDay.endTime)) {
+        current.attendanceEndTime = value;
+      }
+      nextDays[index] = current;
       return { ...prev, conferenceDays: nextDays };
     });
   }
@@ -1755,49 +1828,81 @@ export function ConferenceManager({ conferences }) {
                           {editing.conferenceDays.map((day, index) => (
                             <div
                               key={`${day.date || "day"}-${index}`}
-                              className="grid gap-3 rounded-md border border-border bg-surface p-3 sm:grid-cols-4"
+                              className="space-y-3 rounded-md border border-border bg-surface p-3"
                             >
-                              <Input
-                                label="Date"
-                                type="date"
-                                value={day.date || ""}
-                                error={fieldErrors[`conferenceDays.${index}.date`]}
-                                onChange={(e) =>
-                                  updateConferenceDay(index, "date", e.target.value)
-                                }
-                                requiredMark
-                              />
-                              <Input
-                                label="Start time"
-                                type="time"
-                                value={day.startTime || ""}
-                                error={fieldErrors[`conferenceDays.${index}.startTime`]}
-                                onChange={(e) =>
-                                  updateConferenceDay(index, "startTime", e.target.value)
-                                }
-                                requiredMark
-                              />
-                              <Input
-                                label="End time"
-                                type="time"
-                                value={day.endTime || ""}
-                                error={fieldErrors[`conferenceDays.${index}.endTime`]}
-                                onChange={(e) =>
-                                  updateConferenceDay(index, "endTime", e.target.value)
-                                }
-                                requiredMark
-                              />
-                              <div className="flex items-end">
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  icon={Trash2}
-                                  onClick={() => removeConferenceDay(index)}
-                                  className="w-full"
-                                >
-                                  Remove
-                                </Button>
+                              <div className="grid gap-3 sm:grid-cols-4">
+                                <Input
+                                  label="Date"
+                                  type="date"
+                                  value={day.date || ""}
+                                  error={fieldErrors[`conferenceDays.${index}.date`]}
+                                  onChange={(e) =>
+                                    updateConferenceDay(index, "date", e.target.value)
+                                  }
+                                  requiredMark
+                                />
+                                <Input
+                                  label="Day start"
+                                  type="time"
+                                  value={day.startTime || ""}
+                                  error={fieldErrors[`conferenceDays.${index}.startTime`]}
+                                  onChange={(e) =>
+                                    updateConferenceDay(index, "startTime", e.target.value)
+                                  }
+                                  requiredMark
+                                />
+                                <Input
+                                  label="Day end"
+                                  type="time"
+                                  value={day.endTime || ""}
+                                  error={fieldErrors[`conferenceDays.${index}.endTime`]}
+                                  onChange={(e) =>
+                                    updateConferenceDay(index, "endTime", e.target.value)
+                                  }
+                                  requiredMark
+                                />
+                                <div className="flex items-end">
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    icon={Trash2}
+                                    onClick={() => removeConferenceDay(index)}
+                                    className="w-full"
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
                               </div>
+                              {editing.attendanceSettings?.allowed !== false ? (
+                                <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+                                  <Input
+                                    label="Attendance opens"
+                                    type="time"
+                                    hint="Defaults to day start"
+                                    value={day.attendanceStartTime || day.startTime || ""}
+                                    onChange={(e) =>
+                                      updateConferenceDay(
+                                        index,
+                                        "attendanceStartTime",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                  <Input
+                                    label="Attendance closes"
+                                    type="time"
+                                    hint="Defaults to day end"
+                                    value={day.attendanceEndTime || day.endTime || ""}
+                                    onChange={(e) =>
+                                      updateConferenceDay(
+                                        index,
+                                        "attendanceEndTime",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                </div>
+                              ) : null}
                             </div>
                           ))}
                         </div>
@@ -2707,16 +2812,232 @@ export function ConferenceManager({ conferences }) {
                   </div>
                 ) : null}
 
+                {activeSection === "attendance" ? (
+                  <div className="space-y-6">
+                    <SectionErrorAlert
+                      messages={getSectionErrorMessages(fieldErrors, "attendance")}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Control whether attendees can check in, and how certificates are issued.
+                      Per-day attendance windows are set on the Schedule section (defaulting to each
+                      day’s start and end times).
+                    </p>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-border text-primary"
+                          checked={editing.attendanceSettings?.allowed !== false}
+                          onChange={(e) =>
+                            onField("attendanceSettings", {
+                              ...normalizeAttendanceSettings(editing.attendanceSettings),
+                              allowed: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Allow attendance
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            When enabled, confirmed attendees see the attendance tab and can check
+                            in during each day’s attendance window.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4 space-y-4">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-border text-primary"
+                          checked={Boolean(editing.certificateSettings?.allowed)}
+                          onChange={(e) =>
+                            onField("certificateSettings", {
+                              ...normalizeCertificateSettings(editing.certificateSettings, {
+                                totalDays:
+                                  (editing.conferenceDays || []).filter((d) => d.date).length || 1,
+                              }),
+                              allowed: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Allow certificates
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            When enabled, attendees can generate and download certificates once
+                            eligibility rules are met.
+                          </span>
+                        </span>
+                      </label>
+
+                      {editing.certificateSettings?.allowed ? (
+                        <div className="space-y-4 border-t border-border pt-4">
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 rounded border-border text-primary"
+                              checked={editing.certificateSettings?.basedOnAttendance !== false}
+                              onChange={(e) =>
+                                onField("certificateSettings", {
+                                  ...normalizeCertificateSettings(editing.certificateSettings, {
+                                    totalDays:
+                                      (editing.conferenceDays || []).filter((d) => d.date)
+                                        .length || 1,
+                                  }),
+                                  basedOnAttendance: e.target.checked,
+                                })
+                              }
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-foreground">
+                                Certificates based on attendance
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                If off, every confirmed attendee can download from the last conference
+                                day (or the open time below).
+                              </span>
+                            </span>
+                          </label>
+
+                          {editing.certificateSettings?.basedOnAttendance !== false ? (
+                            <Input
+                              label="Minimum days attended"
+                              type="number"
+                              min={1}
+                              max={
+                                (editing.conferenceDays || []).filter((d) => d.date).length || 1
+                              }
+                              value={editing.certificateSettings?.minAttendanceDays ?? 1}
+                              onChange={(e) =>
+                                onField("certificateSettings", {
+                                  ...normalizeCertificateSettings(editing.certificateSettings, {
+                                    totalDays:
+                                      (editing.conferenceDays || []).filter((d) => d.date)
+                                        .length || 1,
+                                  }),
+                                  minAttendanceDays: Number(e.target.value) || 1,
+                                })
+                              }
+                              hint={`Out of ${(editing.conferenceDays || []).filter((d) => d.date).length || 0} scheduled day(s)`}
+                            />
+                          ) : null}
+
+                          <Input
+                            label="Certificate download opens at"
+                            type="datetime-local"
+                            value={
+                              editing.certificateSettings?.downloadOpensAt
+                                ? (() => {
+                                    const d = new Date(editing.certificateSettings.downloadOpensAt);
+                                    if (Number.isNaN(d.getTime())) return "";
+                                    const pad = (n) => String(n).padStart(2, "0");
+                                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                  })()
+                                : ""
+                            }
+                            onChange={(e) =>
+                              onField("certificateSettings", {
+                                ...normalizeCertificateSettings(editing.certificateSettings, {
+                                  totalDays:
+                                    (editing.conferenceDays || []).filter((d) => d.date).length ||
+                                    1,
+                                }),
+                                downloadOpensAt: e.target.value
+                                  ? new Date(e.target.value).toISOString()
+                                  : null,
+                              })
+                            }
+                            hint="Optional. If empty, downloads open from the last conference day."
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
                 {activeSection === "feedback" ? (
                   <div className="space-y-6">
                     <SectionErrorAlert
                       messages={getSectionErrorMessages(fieldErrors, "feedback")}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Configure day questions (1–5 agree scale) and whether attendees rate
-                      speakers, MCs, and other roles from the Speakers tab.
+                      Configure whether feedback is enabled, when it can be submitted, day questions
+                      (1–5 agree scale), and whether attendees rate speakers from the Speakers tab.
                     </p>
 
+                    <div className="rounded-lg border border-border bg-background p-4 space-y-4">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-border text-primary"
+                          checked={editing.feedbackSettings?.allowed !== false}
+                          onChange={(e) =>
+                            onField("feedbackSettings", {
+                              ...normalizeFeedbackSettings(editing.feedbackSettings),
+                              allowed: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Allow feedback
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            When off, the feedback tab is hidden for attendees.
+                          </span>
+                        </span>
+                      </label>
+
+                      {editing.feedbackSettings?.allowed !== false ? (
+                        <fieldset className="space-y-2 border-t border-border pt-4">
+                          <legend className="text-sm font-medium text-foreground">
+                            When can attendees give feedback?
+                          </legend>
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="radio"
+                              name="feedback-availability"
+                              className="mt-1"
+                              checked={editing.feedbackSettings?.availability !== "always"}
+                              onChange={() =>
+                                onField("feedbackSettings", {
+                                  ...normalizeFeedbackSettings(editing.feedbackSettings),
+                                  availability: "daily",
+                                })
+                              }
+                            />
+                            <span className="text-sm text-foreground">
+                              Daily — only on each conference day (current behaviour)
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="radio"
+                              name="feedback-availability"
+                              className="mt-1"
+                              checked={editing.feedbackSettings?.availability === "always"}
+                              onChange={() =>
+                                onField("feedbackSettings", {
+                                  ...normalizeFeedbackSettings(editing.feedbackSettings),
+                                  availability: "always",
+                                })
+                              }
+                            />
+                            <span className="text-sm text-foreground">
+                              Always open — any past or current day, at any time
+                            </span>
+                          </label>
+                        </fieldset>
+                      ) : null}
+                    </div>
+
+                    {editing.feedbackSettings?.allowed !== false ? (
+                      <>
                     <div className="rounded-lg border border-border bg-background p-4">
                       <h4 className="text-sm font-semibold text-foreground">Day questions</h4>
                       <div className="mt-3 space-y-3">
@@ -2887,6 +3208,8 @@ export function ConferenceManager({ conferences }) {
                         </>
                       ) : null}
                     </div>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
-import { getPublishedConferenceBySlug } from "@/lib/conferences/service";
+import { prisma } from "@/lib/prisma";
 import { canAccessConferenceMemberContent } from "@/lib/auth/conference-member";
 import {
   listConferencePresentations,
@@ -15,7 +15,10 @@ export async function GET(_request, { params }) {
   }
 
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await prisma.conference.findFirst({
+    where: { slug },
+    select: { id: true, slug: true },
+  });
   if (!conference) {
     return NextResponse.json({ error: "Conference not found." }, { status: 404 });
   }
@@ -25,12 +28,13 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const listOpts = { includeFileAccess: false };
   const [materials, paperTemplates, presentationTemplates, presentations] =
     await Promise.all([
-      listConferenceResources(conference.id, RESOURCE_TYPES.MATERIAL),
-      listConferenceResources(conference.id, RESOURCE_TYPES.PAPER_TEMPLATE),
-      listConferenceResources(conference.id, RESOURCE_TYPES.PRESENTATION_TEMPLATE),
-      listConferencePresentations(conference.id),
+      listConferenceResources(conference.id, RESOURCE_TYPES.MATERIAL, listOpts),
+      listConferenceResources(conference.id, RESOURCE_TYPES.PAPER_TEMPLATE, listOpts),
+      listConferenceResources(conference.id, RESOURCE_TYPES.PRESENTATION_TEMPLATE, listOpts),
+      listConferencePresentations(conference.id, listOpts),
     ]);
 
   return NextResponse.json({

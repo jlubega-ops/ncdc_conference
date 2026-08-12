@@ -25,7 +25,7 @@ export default async function SignupPage({ searchParams }) {
       subtitle="Only conferences with open registration and an active call for papers are listed."
       footer={
         <>
-          <Link href="/login?mode=access" className="font-medium text-primary hover:underline">
+          <Link href="/access" className="font-medium text-primary hover:underline">
             Already have an access key? Sign in
           </Link>
           {" · "}

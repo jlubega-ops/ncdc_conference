@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { SPEAKER_TYPE_LABELS } from "@/lib/conferences/constants";
 import {
@@ -23,15 +25,23 @@ import {
   ConferenceMemberMaterials,
 } from "@/components/conference/ConferenceMemberContent";
 import { ConferenceAttendanceTab } from "@/components/conference/ConferenceAttendanceTab";
+import { ConferenceCertificateTab } from "@/components/conference/ConferenceCertificateTab";
 import { ConferenceFeedbackTab } from "@/components/conference/ConferenceFeedbackTab";
-import { isPublicConferenceFeatureConfigured } from "@/lib/conferences/feature-visibility";
+import { AttendeeConferenceHub } from "@/components/conference/AttendeeConferenceHub";
+import {
+  isPublicConferenceFeatureConfigured,
+  conferenceHasAttendance,
+  conferenceHasCertificates,
+  conferenceHasFeedback,
+} from "@/lib/conferences/feature-visibility";
 
 const tabs = [
   { id: "overview", label: "Overview" },
   { id: "cfp", label: "Call for Papers" },
   { id: "programme", label: "Programme" },
   { id: "registration", label: "Registration" },
-  { id: "attendance", label: "Attendance & certificates" },
+  { id: "attendance", label: "Attendance" },
+  { id: "certificates", label: "Certificates" },
   { id: "feedback", label: "Feedback" },
   { id: "materials", label: "Materials" },
   { id: "faqs", label: "FAQs" },
@@ -194,7 +204,7 @@ function CfpTab({ conference, registrationStatus, isAuthenticated, myPapersHref 
         <h3 className="text-sm font-semibold text-foreground">Submit a paper</h3>
         {!isAuthenticated ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            <Link href={`/login?mode=access&redirect=/conferences/${conference.slug}?tab=cfp`} className="text-primary hover:underline">
+            <Link href={`/access?redirect=${encodeURIComponent(`/conferences/${conference.slug}?tab=cfp`)}`} className="text-primary hover:underline">
               Sign in
             </Link>{" "}
             to view and submit your papers for this conference.
@@ -460,6 +470,9 @@ function RegistrationTab({ conference, registrationStatus, registration, isAuthe
         paymentStatus={registration?.paymentStatus}
       />
 
+      <OnlineStreamSection conference={conference} registrationStatus={registrationStatus} />
+      <BreakoutRoomsSection conference={conference} registrationStatus={registrationStatus} />
+
       {conference.requiresPayment && payment ? (
         <section className="rounded-md border border-border bg-background p-4">
           <h3 className="text-sm font-semibold text-foreground">Payment details</h3>
@@ -546,9 +559,6 @@ function RegistrationTab({ conference, registrationStatus, registration, isAuthe
         </section>
       ) : null}
 
-      <OnlineStreamSection conference={conference} registrationStatus={registrationStatus} />
-      <BreakoutRoomsSection conference={conference} registrationStatus={registrationStatus} />
-
       {canRegister ? (
         <Button variant="primary" href={`/conferences/${conference.slug}/register`}>
           Register to attend
@@ -598,30 +608,40 @@ function FaqsTab({ conference }) {
 function getVisibleTabs(conference, isAuthenticated, registrationStatus, memberContent) {
   const approved = isAuthenticated && registrationStatus === "CONFIRMED";
   const hasMemberMaterials = Boolean(memberContent?.hasAny);
+  const hasAttendance = conferenceHasAttendance(conference);
+  const hasCertificates = conferenceHasCertificates(conference);
 
-  return tabs.filter((tab) => {
-    // First gate: feature must be configured on the conference.
-    if (!isPublicConferenceFeatureConfigured(tab.id, conference)) {
-      // Registered attendees still need the registration tab for status / payment.
-      if (tab.id === "registration" && isAuthenticated && registrationStatus) {
-        return true;
+  return tabs
+    .map((tab) => {
+      if (tab.id === "attendance" && hasAttendance && hasCertificates) {
+        return { ...tab, label: "Attendance & certificates" };
       }
-      return false;
-    }
-
-    switch (tab.id) {
-      case "attendance":
-        return approved;
-      case "certificate":
+      return tab;
+    })
+    .filter((tab) => {
+      if (!isPublicConferenceFeatureConfigured(tab.id, conference)) {
+        if (tab.id === "registration" && isAuthenticated && registrationStatus) {
+          return true;
+        }
         return false;
-      case "feedback":
-        return approved && haveConferenceDaysStarted(conference);
-      case "materials":
-        return isAuthenticated && hasMemberMaterials;
-      default:
-        return true;
-    }
-  });
+      }
+
+      switch (tab.id) {
+        case "attendance":
+          return approved && hasAttendance;
+        case "certificates":
+          // When attendance is also on, certificates live inside the attendance tab.
+          return approved && hasCertificates && !hasAttendance;
+        case "certificate":
+          return false;
+        case "feedback":
+          return approved && haveConferenceDaysStarted(conference);
+        case "materials":
+          return isAuthenticated && hasMemberMaterials;
+        default:
+          return true;
+      }
+    });
 }
 
 /**
@@ -652,6 +672,7 @@ export function ConferenceTabs({
   memberContent = null,
   canAccessMemberContent = false,
 }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab") || initialTab;
   // Legacy ?tab=presentations opens the unified Materials hub.
@@ -662,50 +683,152 @@ export function ConferenceTabs({
     registrationStatus,
     memberContent,
   );
+  const isConfirmedAttendee = isAuthenticated && registrationStatus === "CONFIRMED";
+  const showHub = isConfirmedAttendee && !tabFromUrl;
+  const attendanceFeatureOn = conferenceHasAttendance(conference);
+  const certificatesFeatureOn = conferenceHasCertificates(conference);
+  const feedbackFeatureOn = conferenceHasFeedback(conference);
+
+  /** Deep links to disabled features still open so we can show an explicit message. */
+  const blockedFeatureTab =
+    isConfirmedAttendee && tabFromUrl === "attendance" && !attendanceFeatureOn
+      ? "attendance"
+      : isConfirmedAttendee &&
+          (tabFromUrl === "certificates" || tabFromUrl === "certificate") &&
+          !certificatesFeatureOn
+        ? "certificates"
+        : isConfirmedAttendee && tabFromUrl === "feedback" && !feedbackFeatureOn
+          ? "feedback"
+          : null;
+
   const [activeTab, setActiveTab] = useState(
-    tabFromUrl && visibleTabs.some((t) => t.id === tabFromUrl)
-      ? tabFromUrl
-      : visibleTabs[0]?.id ?? "overview",
+    blockedFeatureTab ||
+      (tabFromUrl && visibleTabs.some((t) => t.id === tabFromUrl)
+        ? tabFromUrl
+        : visibleTabs[0]?.id ?? "overview"),
   );
 
   useEffect(() => {
     const t = searchParams.get("tab");
     const normalized = t === "presentations" ? "materials" : t;
-    if (normalized && visibleTabs.some((tab) => tab.id === normalized)) {
+    if (!normalized) return;
+    if (
+      isConfirmedAttendee &&
+      ((normalized === "attendance" && !attendanceFeatureOn) ||
+        ((normalized === "certificates" || normalized === "certificate") &&
+          !certificatesFeatureOn) ||
+        (normalized === "feedback" && !feedbackFeatureOn))
+    ) {
+      setActiveTab(
+        normalized === "certificate" ? "certificates" : normalized,
+      );
+      return;
+    }
+    if (visibleTabs.some((tab) => tab.id === normalized)) {
       setActiveTab(normalized);
     }
-  }, [searchParams, visibleTabs]);
+  }, [
+    searchParams,
+    visibleTabs,
+    isConfirmedAttendee,
+    attendanceFeatureOn,
+    certificatesFeatureOn,
+    feedbackFeatureOn,
+  ]);
 
   useEffect(() => {
+    if (blockedFeatureTab) return;
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
       setActiveTab(visibleTabs[0]?.id ?? "overview");
     }
-  }, [activeTab, visibleTabs]);
+  }, [activeTab, visibleTabs, blockedFeatureTab]);
+
+  function openTab(tabId) {
+    setActiveTab(tabId);
+    router.push(`/conferences/${conference.slug}?tab=${encodeURIComponent(tabId)}`, {
+      scroll: false,
+    });
+  }
+
+  function goToHub() {
+    router.push(`/conferences/${conference.slug}`, { scroll: false });
+  }
+
+  if (showHub) {
+    return (
+      <AttendeeConferenceHub
+        tabs={visibleTabs}
+        conferenceTitle={conference.title}
+        onSelect={openTab}
+      />
+    );
+  }
 
   return (
     <div>
-      <nav
-        className="flex gap-1 overflow-x-auto border-b border-border"
-        aria-label="Conference sections"
-      >
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
-              activeTab === tab.id
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+      {isConfirmedAttendee ? (
+        <div className="sticky top-0 z-10 -mx-1 mb-1 border-b border-primary/20 bg-primary-light/80 px-1 py-3 backdrop-blur-sm sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:backdrop-blur-none">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              icon={ArrowLeft}
+              onClick={goToHub}
+              className="shadow-sm"
+              aria-label="Back to conference home"
+            >
+              Conference home
+            </Button>
+            <nav
+              className="hidden gap-1 overflow-x-auto md:flex"
+              aria-label="Conference sections"
+            >
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => openTab(tab.id)}
+                  className={cn(
+                    "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    activeTab === tab.id
+                      ? "bg-primary text-white"
+                      : "text-muted-foreground hover:bg-primary-light hover:text-primary",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+          <p className="mt-2 text-xs font-medium text-primary md:hidden">
+            {visibleTabs.find((t) => t.id === activeTab)?.label || "Section"}
+          </p>
+        </div>
+      ) : (
+        <nav
+          className="flex gap-1 overflow-x-auto border-b border-border"
+          aria-label="Conference sections"
+        >
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => openTab(tab.id)}
+              className={cn(
+                "shrink-0 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
+                activeTab === tab.id
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
-      <div className="py-8">
+      <div className="py-6 sm:py-8">
         {activeTab === "overview" ? (
           <OverviewTab conference={conference} registrationStatus={registrationStatus} />
         ) : null}
@@ -728,10 +851,41 @@ export function ConferenceTabs({
             isAuthenticated={isAuthenticated}
           />
         ) : null}
-        {activeTab === "attendance" || activeTab === "certificate" ? (
-          <ConferenceAttendanceTab slug={conference.slug} />
+        {activeTab === "attendance" && !attendanceFeatureOn ? (
+          <p className="rounded-md border border-border bg-neutral-50 px-4 py-3 text-sm text-foreground">
+            Attendance is not allowed for this conference.
+          </p>
         ) : null}
-        {activeTab === "feedback" ? <ConferenceFeedbackTab conference={conference} /> : null}
+        {activeTab === "attendance" && attendanceFeatureOn ? (
+          <ConferenceAttendanceTab
+            slug={conference.slug}
+            conferenceHomeHref={`/conferences/${conference.slug}`}
+          />
+        ) : null}
+        {activeTab === "certificate" && (attendanceFeatureOn || certificatesFeatureOn) ? (
+          <ConferenceAttendanceTab
+            slug={conference.slug}
+            conferenceHomeHref={`/conferences/${conference.slug}`}
+          />
+        ) : null}
+        {activeTab === "certificates" ? (
+          certificatesFeatureOn ? (
+            <ConferenceCertificateTab slug={conference.slug} />
+          ) : (
+            <p className="rounded-md border border-border bg-neutral-50 px-4 py-3 text-sm text-foreground">
+              Certificates are not enabled for this conference.
+            </p>
+          )
+        ) : null}
+        {activeTab === "feedback" ? (
+          feedbackFeatureOn ? (
+            <ConferenceFeedbackTab conference={conference} />
+          ) : (
+            <p className="rounded-md border border-border bg-neutral-50 px-4 py-3 text-sm text-foreground">
+              Feedback is not enabled for this conference.
+            </p>
+          )
+        ) : null}
         {activeTab === "materials" ? (
           <MaterialsTab
             slug={conference.slug}

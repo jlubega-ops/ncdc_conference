@@ -123,10 +123,10 @@ export function registrationApprovedEmail({ name, conferenceTitle, notes, confer
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Your registration for <strong>${conferenceTitle}</strong> has been <strong>approved</strong>.</p>
-        <p>An access code has been sent in a separate email (or below if combined). Use <strong>Attendee access</strong> on the sign-in page.</p>
+        <p>An access code has been sent in a separate email (or below if combined). Use the access code sign-in page to open your conference.</p>
         ${notesBlock}
       `,
-      cta: { label: "Sign in with access code", href: `${appUrl}/login?mode=access` },
+      cta: { label: "Sign in with access code", href: `${appUrl}/access` },
     }),
   };
 }
@@ -166,7 +166,7 @@ export function passwordResetEmail({ name, resetUrl }) {
 
 export function accountWelcomeEmail({ name, email, password }) {
   const appUrl = getAppUrl();
-  const loginUrl = `${appUrl}/login?mode=staff`;
+  const loginUrl = `${appUrl}/login`;
   return {
     subject: "Your conference platform account",
     html: wrapEmailTemplate({

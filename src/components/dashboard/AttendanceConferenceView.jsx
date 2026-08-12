@@ -39,7 +39,7 @@ export function AttendanceConferenceView({ slug }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/me/attendance/${slug}`);
+      const res = await fetch(`/api/me/attendance/${slug}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load attendance.");
       setData(json);

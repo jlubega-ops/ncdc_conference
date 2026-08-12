@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAccessKey } from "@/lib/auth/password";
-import { accessKeyLookupToken, parseAccessKey } from "@/lib/auth/access-key";
+import {
+  accessKeyLookupToken,
+  normalizeAccessCodeInput,
+  parseAccessKey,
+} from "@/lib/auth/access-key";
 import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
 import { createUserSession, setSessionCookie } from "@/lib/auth/session";
 import { logActivity } from "@/lib/activity-log/service";
@@ -39,31 +43,54 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error:
-            "Invalid access key format. Use the full key from your email, e.g. ORG/CONF2027/ABCDEFGH (all caps).",
+            "Invalid access code format. Enter the 4-character code from your email (letters and numbers; no I, O, 0, 1, or L).",
           code: "INVALID_KEY_FORMAT",
         },
         { status: 400 },
       );
     }
 
-    const lookup = accessKeyLookupToken(parsed.fullKey);
-    const keys = await prisma.conferenceAccessKey.findMany({
-      where: {
-        conferenceYear: parsed.year,
-        revokedAt: null,
-        OR: [
-          { keySuffix: lookup },
-          // Legacy rows stored plaintext suffix before encryption change.
-          { keySuffix: parsed.suffix },
-        ],
-        ...(emailHint ? { email: emailHint } : {}),
-      },
-      include: { conference: true },
-    });
+    /** @type {any[]} */
+    let candidates = [];
+
+    if (parsed.kind === "short") {
+      candidates = await prisma.conferenceAccessKey.findMany({
+        where: {
+          revokedAt: null,
+          OR: [{ displayCode: parsed.code }, { keySuffix: parsed.code }],
+          ...(emailHint ? { email: emailHint } : {}),
+        },
+        include: { conference: true },
+      });
+    } else {
+      const lookup = accessKeyLookupToken(parsed.fullKey);
+      candidates = await prisma.conferenceAccessKey.findMany({
+        where: {
+          conferenceYear: parsed.year,
+          revokedAt: null,
+          OR: [{ keySuffix: lookup }, { keySuffix: parsed.suffix }],
+          ...(emailHint ? { email: emailHint } : {}),
+        },
+        include: { conference: true },
+      });
+    }
 
     let matchedKey = null;
-    for (const record of keys) {
+    for (const record of candidates) {
       if (record.expiresAt && record.expiresAt < new Date()) continue;
+
+      if (parsed.kind === "short") {
+        const valid =
+          (await verifyAccessKey(parsed.code, record.keyHash)) ||
+          (record.displayCode &&
+            normalizeAccessCodeInput(record.displayCode) === parsed.code);
+        if (valid) {
+          matchedKey = record;
+          break;
+        }
+        continue;
+      }
+
       const org = normalizeOrganiserShortName(record.conference?.organiserShortName);
       if (parsed.org !== org) continue;
       const valid = await verifyAccessKey(parsed.fullKey, record.keyHash);
@@ -79,12 +106,11 @@ export async function POST(request) {
         action: ACTIVITY_ACTIONS.AUTH_ACCESS_KEY_FAILED,
         description: "Access key login failed: invalid or expired code",
         success: false,
-        metadata: { emailHint: emailHint || null, year: parsed.year },
+        metadata: { emailHint: emailHint || null, year: parsed.year ?? null },
       });
       return NextResponse.json(
         {
-          error:
-            "Invalid access code. Enter the full code exactly as sent (ORG/CONF[YEAR]/[CODE]).",
+          error: "Invalid access code. Enter the code exactly as sent in your email.",
           code: "INVALID_KEY",
         },
         { status: 401 },

@@ -1,5 +1,9 @@
 import { allowsPublicRegistration } from "@/lib/conferences/registrable";
 import { normalizeGiftsSettings } from "@/lib/gifts/settings";
+import { normalizeAttendanceSettings } from "@/lib/attendance/settings";
+import { normalizeCertificateSettings } from "@/lib/certificates/settings";
+import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
+import { normalizeConferenceDays } from "@/lib/attendance/utils";
 
 /**
  * Shared feature flags used to hide tabs / nav when a conference
@@ -40,19 +44,30 @@ export function conferenceHasGifts(conference) {
 }
 
 /**
- * Feedback / evaluations need scheduled days to be meaningful.
  * @param {any} conference
  */
 export function conferenceHasFeedback(conference) {
-  return conferenceHasDays(conference);
+  if (!conferenceHasDays(conference)) return false;
+  return normalizeFeedbackSettings(conference?.feedbackSettings).allowed !== false;
 }
 
 /**
- * Attendance marking is day-based.
+ * Attendance marking is day-based and must be enabled in settings.
  * @param {any} conference
  */
 export function conferenceHasAttendance(conference) {
-  return conferenceHasDays(conference);
+  if (!conferenceHasDays(conference)) return false;
+  return normalizeAttendanceSettings(conference?.attendanceSettings).allowed !== false;
+}
+
+/**
+ * @param {any} conference
+ */
+export function conferenceHasCertificates(conference) {
+  const days = normalizeConferenceDays(conference?.conferenceDays);
+  return normalizeCertificateSettings(conference?.certificateSettings, {
+    totalDays: days.length || 1,
+  }).allowed;
 }
 
 /**
@@ -117,8 +132,11 @@ export function isPublicConferenceFeatureConfigured(tabId, conference) {
     case "registration":
       return allowsPublicRegistration(conference);
     case "attendance":
+      return conferenceHasAttendance(conference) || conferenceHasCertificates(conference);
+    case "certificate":
+      return conferenceHasCertificates(conference);
     case "feedback":
-      return conferenceHasDays(conference);
+      return conferenceHasFeedback(conference);
     case "faqs":
       return Array.isArray(conference?.faqs) && conference.faqs.length > 0;
     case "programme": {

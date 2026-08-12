@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useSession } from "@/components/auth/SessionProvider";
@@ -12,8 +12,17 @@ function normalizeAccessKeyInput(value) {
     .replace(/\s+/g, "");
 }
 
+/** Only allow same-origin relative paths (preserve deep links safely). */
+function safeInternalRedirect(value) {
+  if (typeof value !== "string") return null;
+  const path = value.trim();
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return null;
+  return path;
+}
+
 export function AccessKeyLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { refreshSession } = useSession();
   const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +46,11 @@ export function AccessKeyLoginForm() {
         return;
       }
       await refreshSession();
-      router.push(data.redirect ?? "/dashboard");
+      const redirect =
+        safeInternalRedirect(searchParams.get("redirect")) ||
+        safeInternalRedirect(data.redirect) ||
+        "/dashboard";
+      router.push(redirect);
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
@@ -59,8 +72,8 @@ export function AccessKeyLoginForm() {
         value={accessKey}
         onChange={(e) => setAccessKey(normalizeAccessKeyInput(e.target.value))}
         className="font-mono uppercase tracking-wide"
-        hint="From your email, e.g. ORG/CONF2027/XXXXXXXX — entered in all caps"
-        placeholder="ORG/CONF2027/XXXXXXXX"
+        hint="From your email — 4 characters, letters and numbers (no I, O, 0, 1, or L)"
+        placeholder="e.g. A7K3"
         autoFocus
       />
       {error ? (
@@ -72,10 +85,12 @@ export function AccessKeyLoginForm() {
         {loading ? "Verifying…" : "Open conference"}
       </Button>
       <p className="text-center text-sm text-muted-foreground">
-        Each access code opens one conference. Only one login session can be active at a time.
+        Each access code opens one conference. Codes are unique across the platform. Only one login
+        session can be active at a time.
       </p>
       <p className="text-xs text-muted-foreground">
-        Format: ORG/CONF[YEAR]/[CODE] (all uppercase). Characters avoid 0, O, 1, I, and L.
+        Enter the short code from your email in uppercase. Ambiguous characters (I, O, 0, 1, L) are
+        never used.
       </p>
     </form>
   );

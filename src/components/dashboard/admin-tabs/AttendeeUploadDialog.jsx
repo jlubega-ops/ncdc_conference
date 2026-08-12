@@ -109,7 +109,8 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
           Download the CSV template, fill in attendees, then attach the file. Required columns:
           email, firstName, lastName. Optional: middleName, gender (M/F), telephone,
           countryOfOrigin, institution. Rows with errors are highlighted — you can still upload;
-          only rows with a valid email are processed.
+          only rows with a valid email are processed. Access codes are not emailed on upload —
+          use Send access codes afterward.
         </p>
 
         <div className="flex flex-wrap gap-2">

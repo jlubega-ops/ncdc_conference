@@ -10,7 +10,14 @@ const userSelect = {
 
 /**
  * @param {any} row
- * @param {{ hasAccessKey?: boolean; lastAccessAt?: Date | string | null }} [extras]
+ * @param {{
+ *   hasAccessKey?: boolean;
+ *   lastAccessAt?: Date | string | null;
+ *   accessCode?: string | null;
+ *   accessCodeSent?: boolean;
+ *   representatives?: any[];
+ *   representing?: any[];
+ * }} [extras]
  */
 export function mapRegistrationForAdmin(row, extras = {}) {
   const form = row.formData && typeof row.formData === "object" ? row.formData : {};
@@ -19,12 +26,17 @@ export function mapRegistrationForAdmin(row, extras = {}) {
       ? row.user.profileData
       : {};
   const accessKeyIssued =
-    extras.hasAccessKey ??
-    (row.status === "CONFIRMED" && Boolean(row.user));
+    extras.hasAccessKey !== undefined
+      ? extras.hasAccessKey
+      : Boolean(extras.accessCode) || (row.status === "CONFIRMED" && Boolean(row.user));
+  const accessCodeSent = Boolean(extras.accessCodeSent);
   const lastAccessAt =
     extras.lastAccessAt !== undefined
       ? extras.lastAccessAt
       : null;
+  const emailOmitted =
+    Boolean(form.emailOmitted) ||
+    (row.user?.email || "").endsWith("@ncdc.local");
   return {
     id: row.id,
     status: row.status,
@@ -41,18 +53,26 @@ export function mapRegistrationForAdmin(row, extras = {}) {
     user: row.user
       ? {
           id: row.user.id,
-          email: row.user.email,
+          email: emailOmitted ? null : row.user.email,
           name: row.user.name,
           mustChangePassword: row.user.mustChangePassword,
           profileData: profile,
         }
       : row.user,
-    /** Access code has been issued for this conference registration. */
+    /** Access code record exists (may not have been emailed yet). */
     accountActivated: accessKeyIssued,
     accessKeyIssued,
+    /** Access code email was sent to the attendee. */
+    accessCodeSent,
+    /** Admin-visible short access code (null if none issued). */
+    accessCode: extras.accessCode ?? null,
     /** Last successful access-code sign-in; null if never used. */
     lastAccessAt,
     formData: form,
+    emailOmitted,
+    representatives: extras.representatives ?? [],
+    representing: extras.representing ?? [],
+    isRepresented: (extras.representatives ?? []).length > 0,
     displayName:
       form.fullName ||
       [form.firstName, form.lastName].filter(Boolean).join(" ") ||

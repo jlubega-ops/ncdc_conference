@@ -29,6 +29,9 @@ export function LoginForm() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Sign in failed.");
+        if (data.code === "ATTENDEE_USE_ACCESS_KEY" && data.redirect) {
+          router.push(data.redirect);
+        }
         return;
       }
       await refreshSession();
@@ -80,7 +83,11 @@ export function LoginForm() {
         {loading ? "Signing in…" : "Sign in"}
       </Button>
       <p className="text-xs text-muted-foreground">
-        Staff accounts only. Attendees sign in with an access code (Attendee access tab).
+        Staff accounts only. Attendees use the{" "}
+        <Link href="/access" className="font-medium text-primary hover:underline">
+          access code page
+        </Link>
+        .
       </p>
     </form>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Field, FormSection } from "@/components/forms/FormLayout";
@@ -147,7 +148,7 @@ export function ConferenceRegistrationForm({ conference }) {
         if (data.code === "ALREADY_APPLIED" || data.code === "ALREADY_REGISTERED") {
           setSuccess({
             message: data.error,
-            redirect: data.redirect ?? "/login?mode=access",
+            redirect: data.redirect ?? "/access",
             status: data.code === "ALREADY_REGISTERED" ? "CONFIRMED" : "PENDING",
           });
           return;
@@ -191,8 +192,8 @@ export function ConferenceRegistrationForm({ conference }) {
               ? "Sign in with access code"
               : "Sign in"}
           </Button>
-          <Button variant="ghost" href={`/conferences/${conference.slug}`}>
-            Back to conference
+          <Button variant="secondary" icon={ArrowLeft} href={`/conferences/${conference.slug}`}>
+            Conference home
           </Button>
         </div>
       </div>

@@ -18,13 +18,13 @@ export function DashboardShell({ children }) {
 
   if (session.activeRole === "ATTENDEE") {
     const slug = getActiveConferenceSlug(session);
-    const conferenceHref = slug ? `/conferences/${slug}` : "/login?mode=access";
+    const conferenceHref = slug ? `/conferences/${slug}` : "/access";
 
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
-          <Button variant="ghost" size="sm" icon={ArrowLeft} href={conferenceHref}>
-            Back to my conference
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary/20 bg-primary-light/60 px-4 py-3">
+          <Button variant="secondary" size="md" icon={ArrowLeft} href={conferenceHref} className="shadow-sm">
+            Conference home
           </Button>
           <Button variant="outline" size="sm" icon={LogOut} onClick={logout}>
             Logout

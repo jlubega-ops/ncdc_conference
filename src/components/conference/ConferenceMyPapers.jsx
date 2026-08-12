@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -87,14 +87,15 @@ export function ConferenceMyPapers({ slug, conferenceTitle, backHref }) {
           </p>
           <h1 className="text-xl font-semibold text-foreground">{conferenceTitle}</h1>
         </div>
-        <div className="flex flex-col items-end gap-1 text-sm">
-          <Link
-            href={backHref ?? `/conferences/${slug}?tab=cfp`}
-            className="text-muted-foreground hover:text-primary"
-          >
-            ← Back to conference
-          </Link>
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={ArrowLeft}
+          href={backHref ?? `/conferences/${slug}`}
+          className="shadow-sm"
+        >
+          Conference home
+        </Button>
       </div>
 
       {!data?.registrationApproved ? (

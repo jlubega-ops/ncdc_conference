@@ -10,12 +10,22 @@ function useDelegate() {
  * @param {{ select?: Record<string, boolean>; orderBy?: { dayDate?: string } }} [opts]
  */
 export async function findAttendanceMarks(where, opts = {}) {
+  /** @param {any} row */
+  const normalizeRow = (row) => {
+    if (!row) return row;
+    return {
+      ...row,
+      dayDate: row.dayDate ? String(row.dayDate).slice(0, 10) : row.dayDate,
+    };
+  };
+
   if (useDelegate()) {
-    return prisma.conferenceAttendance.findMany({
+    const rows = await prisma.conferenceAttendance.findMany({
       where,
       select: opts.select,
       orderBy: opts.orderBy,
     });
+    return Array.isArray(rows) ? rows.map(normalizeRow) : [];
   }
 
   const conditions = ["1=1"];
@@ -44,7 +54,7 @@ export async function findAttendanceMarks(where, opts = {}) {
     ...params,
   );
 
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(rows) ? rows.map(normalizeRow) : [];
 }
 
 /**

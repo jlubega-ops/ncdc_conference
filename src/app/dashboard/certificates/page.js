@@ -11,7 +11,7 @@ export default async function CertificatesPage() {
   }
 
   if (!session) {
-    redirect("/login?mode=access");
+    redirect("/access");
   }
 
   // Certificates now live on the conference's Certificate tab.

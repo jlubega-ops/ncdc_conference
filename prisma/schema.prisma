@@ -82,6 +82,8 @@ model User {
   conferenceFeedback     ConferenceFeedback[]
   certificates           ConferenceCertificate[]
   giftIssuances          ConferenceGiftIssuance[]
+  representedAsPrincipal ConferenceRepresentative[] @relation("RepresentedPrincipals")
+  actingAsRepresentative ConferenceRepresentative[] @relation("ActingRepresentatives")
 
   @@map("users")
 }
@@ -153,8 +155,12 @@ model Conference {
   programme            Json?
   speakers             Json?
   faqs                 Json?
-  /// Day questions + which speaker roles to evaluate
+  /// Day questions + which speaker roles to evaluate + allowed / availability
   feedbackSettings     Json?
+  /// Attendance feature: { allowed }
+  attendanceSettings   Json?
+  /// Certificates: { allowed, basedOnAttendance, minAttendanceDays, downloadOpensAt }
+  certificateSettings  Json?
   /// Awards & gifts: applicable flag, items, recipient categories
   giftsSettings        Json?
   requiresPayment      Boolean                   @default(false)
@@ -173,6 +179,7 @@ model Conference {
   roles          UserRole[]
   accessKeys     ConferenceAccessKey[]
   registrations  ConferenceRegistration[]
+  representatives ConferenceRepresentative[]
   attendance     ConferenceAttendance[]
   submissions    PaperSubmission[]
   feedback       ConferenceFeedback[]
@@ -194,6 +201,8 @@ model ConferenceAccessKey {
   userId         String?
   email          String
   keyHash        String
+  /// Short memorable code (admin-visible). Globally unique across the platform.
+  displayCode    String?   @unique @db.VarChar(16)
   keySuffix      String?
   conferenceYear Int?
   label          String?
@@ -201,6 +210,8 @@ model ConferenceAccessKey {
   revokedAt      DateTime?
   /// Last successful sign-in with this access code
   lastUsedAt     DateTime?
+  /// When the access code was emailed to the attendee (null = not sent yet)
+  emailedAt      DateTime?
   createdAt      DateTime  @default(now())
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
@@ -208,6 +219,7 @@ model ConferenceAccessKey {
 
   @@index([conferenceId, email])
   @@index([email, conferenceYear])
+  @@index([displayCode])
   @@map("conference_access_keys")
 }
 
@@ -228,11 +240,37 @@ model ConferenceRegistration {
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  representatives      ConferenceRepresentative[] @relation("PrincipalReps")
+  representingFor      ConferenceRepresentative[] @relation("AsRepresentative")
 
   @@unique([conferenceId, userId])
   @@index([conferenceId, status])
   @@index([userId])
   @@map("conference_registrations")
+}
+
+/// A registered attendee may send one or more people to attend on their behalf.
+model ConferenceRepresentative {
+  id                           String   @id @default(cuid())
+  conferenceId                 String
+  principalRegistrationId      String
+  principalUserId              String
+  representativeRegistrationId String?
+  representativeUserId         String
+  notes                        String?  @db.Text
+  createdById                  String?
+  createdAt                    DateTime @default(now())
+
+  conference                 Conference              @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  principalRegistration      ConferenceRegistration  @relation("PrincipalReps", fields: [principalRegistrationId], references: [id], onDelete: Cascade)
+  representativeRegistration ConferenceRegistration? @relation("AsRepresentative", fields: [representativeRegistrationId], references: [id], onDelete: SetNull)
+  principalUser              User                    @relation("RepresentedPrincipals", fields: [principalUserId], references: [id], onDelete: Cascade)
+  representativeUser         User                    @relation("ActingRepresentatives", fields: [representativeUserId], references: [id], onDelete: Cascade)
+
+  @@unique([conferenceId, principalUserId, representativeUserId])
+  @@index([conferenceId, principalUserId])
+  @@index([conferenceId, representativeUserId])
+  @@map("conference_representatives")
 }
 
 model ConferenceAttendance {
@@ -339,6 +377,8 @@ model ConferenceGiftIssuance {
   category     String   @db.VarChar(32)
   /// { [itemId]: quantityIssued }
   items        Json
+  /// Optional admin note when issuing / adding a gift-only recipient
+  comment      String?  @db.Text
   issuedAt     DateTime @default(now())
   issuedById   String?
   updatedAt    DateTime @updatedAt
@@ -358,6 +398,7 @@ model ConferenceResource {
   conferenceId String
   type         ConferenceResourceType
   title        String
+  author       String?
   description  String?                @db.Text
   fileId       String
   fileName     String?

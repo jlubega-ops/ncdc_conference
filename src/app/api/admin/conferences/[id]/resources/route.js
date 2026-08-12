@@ -4,6 +4,7 @@ import {
   createConferenceResource,
   deleteConferenceResource,
   listConferenceResources,
+  updateConferenceResource,
 } from "@/lib/conference-content/service";
 import { RESOURCE_TYPES } from "@/lib/conference-content/constants";
 import { logActivity } from "@/lib/activity-log/service";
@@ -26,7 +27,6 @@ export async function GET(request, { params }) {
   if (!access.ok) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
-  const session = access.session;
 
   const type = parseType(new URL(request.url).searchParams.get("type"));
   if (!type) {
@@ -66,6 +66,39 @@ export async function POST(request, { params }) {
     return NextResponse.json({ resource });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not add resource.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(request, { params }) {
+  const { id } = await params;
+  const access = await authorizeConferenceAccess(id);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+  const session = access.session;
+
+  const resourceId = new URL(request.url).searchParams.get("resourceId");
+  if (!resourceId) {
+    return NextResponse.json({ error: "resourceId is required." }, { status: 400 });
+  }
+
+  try {
+    const form = await request.formData();
+    const resource = await updateConferenceResource(id, resourceId, form);
+    await logActivity({
+      session,
+      request,
+      action: ACTIVITY_ACTIONS.RESOURCE_UPDATE,
+      description: "Updated conference resource",
+      resourceType: "resource",
+      resourceId,
+      conferenceId: id,
+      metadata: { type: resource.type },
+    });
+    return NextResponse.json({ resource });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not update resource.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

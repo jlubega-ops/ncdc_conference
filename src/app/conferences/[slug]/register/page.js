@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { ConferenceRegistrationForm } from "@/components/conference/ConferenceRegistrationForm";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
 import { Button } from "@/components/ui/Button";
@@ -56,15 +56,14 @@ export default async function ConferenceRegisterPage({ params }) {
       conference={conference}
       maxWidth="xl"
       footer={
-        <>
-          <Link href={`/conferences/${conference.slug}`} className="hover:text-primary">
-            ← Back to conference
-          </Link>
-          {" · "}
-          <Link href="/login?mode=access" className="hover:text-primary">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="secondary" size="sm" icon={ArrowLeft} href={`/conferences/${conference.slug}`}>
+            Conference home
+          </Button>
+          <Button variant="outline" size="sm" href="/access">
             Sign in with access code
-          </Link>
-        </>
+          </Button>
+        </div>
       }
     >
       {canRegister ? (
@@ -80,8 +79,8 @@ export default async function ConferenceRegisterPage({ params }) {
       ) : (
         <div className="py-4 text-center">
           <p className="text-sm text-muted-foreground">{closedMessage}</p>
-          <Button variant="outline" href={`/conferences/${conference.slug}`} className="mt-6">
-            Back to conference
+          <Button variant="secondary" href={`/conferences/${conference.slug}`} className="mt-6" icon={ArrowLeft}>
+            Conference home
           </Button>
         </div>
       )}

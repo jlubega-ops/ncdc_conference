@@ -32,6 +32,7 @@ export const ACTIVITY_ACTIONS = {
 
   // Content
   RESOURCE_CREATE: "resource.create",
+  RESOURCE_UPDATE: "resource.update",
   RESOURCE_DELETE: "resource.delete",
   PRESENTATION_CREATE: "presentation.create",
   PRESENTATION_DELETE: "presentation.delete",
@@ -48,6 +49,8 @@ export const ACTIVITY_ACTIONS = {
   REGISTRATION_ACTIVATE: "registration.activate",
   REGISTRATION_RESEND_ACCESS: "registration.resend_access",
   REGISTRATION_BULK_SEND_ACCESS: "registration.bulk_send_access",
+  REGISTRATION_ADD_ATTENDEE: "registration.add_attendee",
+  REGISTRATION_ASSIGN_REPRESENTATIVE: "registration.assign_representative",
   ATTENDEES_UPLOAD: "attendees.upload",
 
   // Attendance

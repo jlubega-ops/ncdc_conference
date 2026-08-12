@@ -36,18 +36,31 @@ export function parseTimeToMinutes(time) {
 
 /**
  * @param {unknown} raw
- * @returns {Array<{ date: string; startTime: string; endTime: string; dayIndex: number }>}
+ * @returns {Array<{
+ *   date: string;
+ *   startTime: string;
+ *   endTime: string;
+ *   attendanceStartTime: string;
+ *   attendanceEndTime: string;
+ *   dayIndex: number;
+ * }>}
  */
 export function normalizeConferenceDays(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((d) => d?.date)
-    .map((d, index) => ({
-      date: String(d.date).slice(0, 10),
-      startTime: d.startTime || "09:00",
-      endTime: d.endTime || "17:00",
-      dayIndex: index + 1,
-    }))
+    .map((d, index) => {
+      const startTime = d.startTime || "09:00";
+      const endTime = d.endTime || "17:00";
+      return {
+        date: String(d.date).slice(0, 10),
+        startTime,
+        endTime,
+        attendanceStartTime: d.attendanceStartTime || startTime,
+        attendanceEndTime: d.attendanceEndTime || endTime,
+        dayIndex: index + 1,
+      };
+    })
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -93,10 +106,17 @@ export function getTodayConferenceDay(conference, now = new Date()) {
   const todayDay = days.find((d) => d.date === todayKey);
   if (!todayDay) return null;
 
-  const window = getDayWindowState(todayDay.date, todayDay.startTime, todayDay.endTime, tz);
+  const window = getDayWindowState(
+    todayDay.date,
+    todayDay.attendanceStartTime || todayDay.startTime,
+    todayDay.attendanceEndTime || todayDay.endTime,
+    tz,
+  );
   return {
     ...todayDay,
     ...window,
+    checkInStartTime: todayDay.attendanceStartTime || todayDay.startTime,
+    checkInEndTime: todayDay.attendanceEndTime || todayDay.endTime,
     timezone: tz,
     totalDays: days.length,
   };

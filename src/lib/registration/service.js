@@ -43,7 +43,7 @@ export function registrationConflictResponse({ conference, registration }) {
       body: {
         error: `You have already applied for ${conference.title}. Check your email for updates, or sign in with your access code after approval.`,
         code: "ALREADY_APPLIED",
-        redirect: "/login?mode=access",
+        redirect: "/access",
       },
     };
   }
@@ -53,7 +53,7 @@ export function registrationConflictResponse({ conference, registration }) {
       body: {
         error: `You are already registered for ${conference.title}. Sign in with your access code.`,
         code: "ALREADY_REGISTERED",
-        redirect: "/login?mode=access",
+        redirect: "/access",
       },
     };
   }
@@ -62,7 +62,7 @@ export function registrationConflictResponse({ conference, registration }) {
     body: {
       error: `A registration record already exists for ${conference.title}.`,
       code: "EXISTING_REGISTRATION",
-      redirect: "/login?mode=access",
+      redirect: "/access",
     },
   };
 }
@@ -465,11 +465,20 @@ export async function resendAccountActivation({ registrationId, conferenceId }) 
     conference: registration.conference,
   });
 
-  if (!keyResult.emailSent) {
+  const email = registration.user.email.toLowerCase();
+  const skippedEmail = email.endsWith("@ncdc.local") || email.includes("@no-email.");
+  if (!keyResult.emailSent && !skippedEmail) {
     throw new Error("Could not send access code email.");
   }
 
-  return { ok: true, message: "A new access code was emailed. The previous code no longer works." };
+  return {
+    ok: true,
+    accessKey: keyResult.accessKey,
+    emailSent: keyResult.emailSent,
+    message: keyResult.emailSent
+      ? "A new access code was emailed. The previous code no longer works."
+      : "A new access code was created. Share it with the attendee (no email on file).",
+  };
 }
 
 /**
@@ -521,7 +530,7 @@ export async function sendAccessCodesBulk({ conferenceId, registrationIds }) {
         user: registration.user,
         conference: registration.conference,
       });
-      if (!keyResult.emailSent) {
+      if (!keyResult.emailSent && !keyResult.emailSkipped) {
         results.failed.push({
           id,
           email: registration.user.email,

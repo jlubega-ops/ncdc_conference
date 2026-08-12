@@ -8,7 +8,7 @@ export function RegistrationDetailFields({ row }) {
 
   const fields = [
     ["Full name", row.displayName || form.fullName],
-    ["Email", row.user?.email],
+    ["Email", row.emailOmitted ? "Not provided" : row.user?.email],
     ["Gender", form.gender],
     ["Age range", form.ageRange],
     [

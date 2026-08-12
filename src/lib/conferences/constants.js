@@ -45,6 +45,7 @@ export const FORM_SECTIONS = [
   { id: "cfp", label: "Call for papers" },
   { id: "programme", label: "Programme" },
   { id: "speakers", label: "Speakers" },
+  { id: "attendance", label: "Attendance & certificates" },
   { id: "feedback", label: "Feedback" },
   { id: "gifts", label: "Awards & gifts" },
   { id: "faqs", label: "FAQs" },

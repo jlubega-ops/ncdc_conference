@@ -12,6 +12,8 @@ import {
   normalizeConferenceDays,
 } from "@/lib/attendance/utils";
 import { computeAttendanceStats } from "@/lib/attendance/stats";
+import { isAttendanceAllowed } from "@/lib/attendance/settings";
+import { isCertificatesAllowed } from "@/lib/certificates/settings";
 
 export { getCertificateSummaries } from "@/lib/certificates/service";
 
@@ -157,6 +159,13 @@ export async function getAttendanceConferenceDetail(userId, slug) {
     throw new Error("This conference has no scheduled days configured.");
   }
 
+  const attendanceAllowed = isAttendanceAllowed(conference);
+  const certificatesAllowed = isCertificatesAllowed(conference);
+
+  if (!attendanceAllowed && !certificatesAllowed) {
+    throw new Error("Attendance is not allowed for this conference.");
+  }
+
   const tz = conference.timezone || "Africa/Nairobi";
   const marks = await findAttendanceMarks(
     { userId, conferenceId: conference.id },
@@ -164,7 +173,7 @@ export async function getAttendanceConferenceDetail(userId, slug) {
   );
 
   const stats = computeAttendanceStats(days, marks, tz);
-  const today = getTodayConferenceDay(conference);
+  const today = attendanceAllowed ? getTodayConferenceDay(conference) : null;
   const mapped = mapConferenceForUi(conference);
   const runningToday = Boolean(today);
 
@@ -178,6 +187,10 @@ export async function getAttendanceConferenceDetail(userId, slug) {
       dateRange: mapped.dateRange,
       lifecycleStatus: mapped.status,
       timezone: tz,
+      attendanceAllowed,
+      certificatesAllowed,
+      attendanceSettings: mapped.attendanceSettings,
+      certificateSettings: mapped.certificateSettings,
     },
     runningToday,
     today: today
@@ -185,8 +198,8 @@ export async function getAttendanceConferenceDetail(userId, slug) {
           date: today.date,
           dayIndex: today.dayIndex,
           label: formatAttendanceDayLabel(today.date, today.dayIndex, today.totalDays),
-          startTime: today.startTime,
-          endTime: today.endTime,
+          startTime: today.checkInStartTime || today.attendanceStartTime || today.startTime,
+          endTime: today.checkInEndTime || today.attendanceEndTime || today.endTime,
           phase: today.phase,
           canCheckIn:
             today.canCheckIn && !marks.some((m) => m.dayDate === today.date),
@@ -208,6 +221,10 @@ export async function getAttendanceConferenceDetail(userId, slug) {
  */
 export async function checkInAttendance(userId, slug) {
   const detail = await getAttendanceConferenceDetail(userId, slug);
+
+  if (!detail.conference.attendanceAllowed) {
+    throw new Error("Attendance is not allowed for this conference.");
+  }
 
   if (!detail.runningToday || !detail.today) {
     throw new Error("Attendance check-in is only available on scheduled conference days.");

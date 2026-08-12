@@ -11,7 +11,7 @@ export default async function MyRegistrationsPage() {
   }
 
   if (!session) {
-    redirect("/login?mode=access");
+    redirect("/access");
   }
 
   // Attendees now manage everything from their conference tabs.

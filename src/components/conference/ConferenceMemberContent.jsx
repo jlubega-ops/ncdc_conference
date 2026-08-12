@@ -1,15 +1,66 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, FileText, Search } from "lucide-react";
+import { toast } from "react-toastify";
+import { ChevronDown, Download, Eye, FileText, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
 import { MEMBER_CONTENT_SECTIONS } from "@/lib/conference-content/constants";
 import {
   formatPresentationSpeaker,
   groupPresentationsByDay,
 } from "@/lib/conference-content/presentation-days";
+
+/**
+ * @param {string | null | undefined} fileName
+ */
+function canPreviewFile(fileName) {
+  const name = String(fileName || "").toLowerCase();
+  return (
+    name.endsWith(".pdf") ||
+    name.endsWith(".png") ||
+    name.endsWith(".jpg") ||
+    name.endsWith(".jpeg") ||
+    name.endsWith(".webp") ||
+    name.endsWith(".gif")
+  );
+}
+
+/**
+ * @param {string | null | undefined} fileName
+ */
+function isImageFile(fileName) {
+  const name = String(fileName || "").toLowerCase();
+  return (
+    name.endsWith(".png") ||
+    name.endsWith(".jpg") ||
+    name.endsWith(".jpeg") ||
+    name.endsWith(".webp") ||
+    name.endsWith(".gif")
+  );
+}
+
+/**
+ * Fetch a protected member file as a blob URL (requires session cookies).
+ * @param {string} url
+ */
+async function fetchProtectedBlob(url) {
+  const res = await fetch(url, { cache: "no-store", credentials: "same-origin" });
+  if (!res.ok) {
+    let message = "Could not open file.";
+    try {
+      const data = await res.json();
+      if (data?.error) message = data.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
 
 /**
  * @param {{
@@ -52,9 +103,136 @@ function MemberContentSection({ title, description, count, defaultOpen = true, c
 }
 
 /**
- * @param {{ items: Array<{ id: string; title: string; description?: string | null; downloadUrl: string }> }} props
+ * @param {{
+ *   slug: string;
+ *   kind: "resource" | "presentation";
+ *   items: Array<{
+ *     id: string;
+ *     title: string;
+ *     author?: string | null;
+ *     description?: string | null;
+ *     fileName?: string | null;
+ *     speakerName?: string | null;
+ *     speakerTitle?: string | null;
+ *     hasFile?: boolean;
+ *   }>;
+ * }} props
  */
-function ResourceFileList({ items }) {
+function ProtectedResourceActions({ slug, kind, item }) {
+  const [busy, setBusy] = useState("");
+  const [preview, setPreview] = useState(null);
+
+  const fileUrl = (mode) =>
+    `/api/me/conferences/${encodeURIComponent(slug)}/files/${kind}/${encodeURIComponent(item.id)}?mode=${mode}`;
+
+  async function handlePreview() {
+    if (!canPreviewFile(item.fileName)) {
+      toast.info("Preview is available for PDF and image files. Please download this file.");
+      return;
+    }
+    setBusy("preview");
+    try {
+      const blobUrl = await fetchProtectedBlob(fileUrl("preview"));
+      setPreview({
+        url: blobUrl,
+        title: item.title,
+        isImage: isImageFile(item.fileName),
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not preview file.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleDownload() {
+    setBusy("download");
+    try {
+      const blobUrl = await fetchProtectedBlob(fileUrl("download"));
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = item.fileName || item.title || "download";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
+      toast.success("Download started.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not download file.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function closePreview() {
+    if (preview?.url) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  }
+
+  return (
+    <>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={Boolean(busy)}
+          onClick={handlePreview}
+        >
+          <Icon icon={Eye} size="sm" />
+          {busy === "preview" ? "Opening…" : "Preview"}
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={Boolean(busy)}
+          onClick={handleDownload}
+        >
+          <Icon icon={Download} size="sm" />
+          {busy === "download" ? "…" : "Download"}
+        </Button>
+      </div>
+
+      <Modal open={Boolean(preview)} onClose={closePreview} title={preview?.title || "Preview"}>
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-md border border-border bg-neutral-50">
+            {preview?.isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- blob preview URL
+              <img
+                src={preview.url}
+                alt={preview.title}
+                className="mx-auto max-h-[70vh] w-auto max-w-full object-contain"
+              />
+            ) : preview ? (
+              <iframe
+                title={preview.title}
+                src={preview.url}
+                className="h-[70vh] w-full"
+              />
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={closePreview}>
+              <Icon icon={X} size="sm" />
+              Close
+            </Button>
+            <Button variant="primary" onClick={handleDownload} disabled={Boolean(busy)}>
+              <Icon icon={Download} size="sm" />
+              Download
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+/**
+ * @param {{
+ *   slug: string;
+ *   items: Array<{ id: string; title: string; author?: string | null; description?: string | null; fileName?: string | null }>;
+ * }} props
+ */
+function ResourceFileList({ slug, items }) {
   return (
     <ul className="divide-y divide-border rounded-md border border-border">
       {items.map((item) => (
@@ -64,13 +242,14 @@ function ResourceFileList({ items }) {
         >
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">{item.title}</p>
+            {item.author ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">Author: {item.author}</p>
+            ) : null}
             {item.description ? (
               <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
             ) : null}
           </div>
-          <Button variant="outline" size="sm" href={item.downloadUrl} target="_blank">
-            Download
-          </Button>
+          <ProtectedResourceActions slug={slug} kind="resource" item={item} />
         </li>
       ))}
     </ul>
@@ -78,10 +257,9 @@ function ResourceFileList({ items }) {
 }
 
 /**
- * Presentations browser grouped by session (same organization as admin uploads).
- * @param {{ presentations: any[] }} props
+ * @param {{ slug: string; presentations: any[] }} props
  */
-function PresentationsBrowser({ presentations }) {
+function PresentationsBrowser({ slug, presentations }) {
   const [search, setSearch] = useState("");
   const [openGroups, setOpenGroups] = useState({});
 
@@ -145,7 +323,7 @@ function PresentationsBrowser({ presentations }) {
                 {isOpen ? (
                   <ul className="divide-y divide-border border-t border-border">
                     {items.map((p) => (
-                      <li key={p.id} className="flex items-start gap-3 px-4 py-3">
+                      <li key={p.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                         <Icon icon={FileText} size="sm" className="mt-0.5 shrink-0 text-primary" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-foreground">{p.title}</p>
@@ -160,10 +338,8 @@ function PresentationsBrowser({ presentations }) {
                             </p>
                           ) : null}
                         </div>
-                        {p.downloadUrl ? (
-                          <Button variant="outline" size="sm" href={p.downloadUrl} target="_blank">
-                            View
-                          </Button>
+                        {p.hasFile ? (
+                          <ProtectedResourceActions slug={slug} kind="presentation" item={p} />
                         ) : (
                           <span className="text-xs text-muted-foreground">No file</span>
                         )}
@@ -206,7 +382,10 @@ export function ConferenceMemberMaterials({
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/me/conferences/${slug}/content`);
+      const res = await fetch(`/api/me/conferences/${slug}/content`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not load materials.");
       setData(json);
@@ -264,9 +443,9 @@ export function ConferenceMemberMaterials({
             defaultOpen={index === 0}
           >
             {section.key === "presentations" ? (
-              <PresentationsBrowser presentations={items} />
+              <PresentationsBrowser slug={slug} presentations={items} />
             ) : (
-              <ResourceFileList items={items} />
+              <ResourceFileList slug={slug} items={items} />
             )}
           </MemberContentSection>
         );

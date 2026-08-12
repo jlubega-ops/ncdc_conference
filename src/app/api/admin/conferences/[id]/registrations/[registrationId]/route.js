@@ -63,6 +63,7 @@ export async function PATCH(request, { params }) {
         { email: updated.user.email.toLowerCase() },
       ],
     },
+    select: { id: true, displayCode: true, lastUsedAt: true },
   });
 
   await logActivity({
@@ -91,7 +92,11 @@ export async function PATCH(request, { params }) {
 
   return NextResponse.json({
     ok: true,
-    registration: mapRegistrationForAdmin(updated, { hasAccessKey: Boolean(accessKey) }),
+    registration: mapRegistrationForAdmin(updated, {
+      hasAccessKey: Boolean(accessKey),
+      accessCode: accessKey?.displayCode || null,
+      lastAccessAt: accessKey?.lastUsedAt || null,
+    }),
     message,
     emailChanged: updateResult.emailChanged,
     accessKeyEmailed: updateResult.accessKeyEmailed,

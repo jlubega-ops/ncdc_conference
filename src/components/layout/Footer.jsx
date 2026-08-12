@@ -34,54 +34,49 @@ export function Footer() {
 
   return (
     <footer className="mt-auto border-t border-border bg-surface">
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="sm:col-span-2 lg:col-span-2">
-            <Logo size="lg" linkToHome={false} />
-            <p className="mt-3 font-semibold text-foreground">Conference Management</p>
-            <p className="mt-4 max-w-md text-sm text-muted-foreground">
-              Discover conferences, register for events, submit papers, and access materials from
-              one place.
-            </p>
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+          <div className="flex min-w-0 max-w-xl items-start gap-3 sm:gap-4">
+            <Logo size="md" showText={false} linkToHome={false} className="mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground">Conference Management</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Discover conferences, register for events, submit papers, and access materials from
+                one place.
+              </p>
+            </div>
           </div>
 
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">About</h3>
-            <ul className="mt-4 space-y-2">
-              {footerLinks.about.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-primary"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Legal & Support</h3>
-            <ul className="mt-4 space-y-2">
-              {footerLinks.legal.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-primary"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          <div className="flex flex-wrap gap-x-10 gap-y-4 sm:gap-x-12">
+            <FooterLinkGroup title="About" links={footerLinks.about} />
+            <FooterLinkGroup title="Legal & Support" links={footerLinks.legal} />
           </div>
         </div>
 
-        <div className="mt-10 border-t border-border pt-6 text-center text-sm text-muted-foreground">
+        <div className="mt-6 border-t border-border pt-4 text-center text-sm text-muted-foreground">
           &copy; {new Date().getFullYear()} Conference Management. All rights reserved.
         </div>
       </div>
     </footer>
+  );
+}
+
+/**
+ * @param {{ title: string; links: Array<{ label: string; href: string }> }} props
+ */
+function FooterLinkGroup({ title, links }) {
+  return (
+    <div className="min-w-0">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {links.map((link) => (
+          <li key={link.href}>
+            <Link href={link.href} className="text-sm text-muted-foreground hover:text-primary">
+              {link.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

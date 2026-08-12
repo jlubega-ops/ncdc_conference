@@ -55,6 +55,9 @@ export const DEFAULT_SPEAKER_QUESTIONS = [
 ];
 
 export const DEFAULT_FEEDBACK_SETTINGS = {
+  allowed: true,
+  /** @type {"daily" | "always"} */
+  availability: "daily",
   questions: DEFAULT_DAY_QUESTIONS,
   speakerQuestions: DEFAULT_SPEAKER_QUESTIONS,
   evaluateSpeakers: true,
@@ -101,6 +104,8 @@ export function normalizeFeedbackSettings(raw) {
   };
 
   return {
+    allowed: raw.allowed !== false,
+    availability: raw.availability === "always" ? "always" : "daily",
     questions: questions.length ? questions : [...DEFAULT_DAY_QUESTIONS],
     speakerQuestions: speakerQuestions.length
       ? speakerQuestions

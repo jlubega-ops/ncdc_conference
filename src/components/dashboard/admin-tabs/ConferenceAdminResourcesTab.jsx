@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
-import { Trash2, Upload } from "lucide-react";
+import { Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Input } from "@/components/ui/Input";
 import { Icon } from "@/components/ui/Icon";
+import { Modal } from "@/components/ui/Modal";
 import { FormSection } from "@/components/forms/FormLayout";
 import { RESOURCE_TYPE_LABELS } from "@/lib/conference-content/constants";
+
+const EMPTY_FORM = { title: "", author: "", description: "", file: null };
 
 /**
  * @param {{ conferenceId: string; type: string; title: string; emptyHint: string; nested?: boolean }} props
@@ -23,8 +26,10 @@ export function ConferenceAdminResourcesTab({
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", file: null });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [removeTarget, setRemoveTarget] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +62,7 @@ export function ConferenceAdminResourcesTab({
     try {
       const body = new FormData();
       body.append("title", form.title);
+      body.append("author", form.author);
       body.append("description", form.description);
       body.append("file", form.file);
       const res = await fetch(
@@ -66,10 +72,47 @@ export function ConferenceAdminResourcesTab({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not upload.");
       toast.success(`${RESOURCE_TYPE_LABELS[type] ?? "File"} added.`);
-      setForm({ title: "", description: "", file: null });
+      setForm(EMPTY_FORM);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not upload.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openEdit(item) {
+    setEditing(item);
+    setEditForm({
+      title: item.title || "",
+      author: item.author || "",
+      description: item.description || "",
+      file: null,
+    });
+  }
+
+  async function handleEdit(e) {
+    e.preventDefault();
+    if (!editing) return;
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.append("title", editForm.title);
+      body.append("author", editForm.author);
+      body.append("description", editForm.description);
+      if (editForm.file) body.append("file", editForm.file);
+      const res = await fetch(
+        `/api/admin/conferences/${conferenceId}/resources?resourceId=${editing.id}`,
+        { method: "PATCH", body },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update.");
+      toast.success("Material updated.");
+      setEditing(null);
+      setEditForm(EMPTY_FORM);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update.");
     } finally {
       setBusy(false);
     }
@@ -120,15 +163,19 @@ export function ConferenceAdminResourcesTab({
             onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
           />
           <Input
+            label="Author"
+            hint="Optional"
+            value={form.author}
+            onChange={(e) => setForm((p) => ({ ...p, author: e.target.value }))}
+          />
+          <Input
             label="Description"
             hint="Optional"
             value={form.description}
             onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
           />
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">
-              File *
-            </label>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">File *</label>
             <input
               type="file"
               accept=".pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.txt"
@@ -137,7 +184,9 @@ export function ConferenceAdminResourcesTab({
               }
               className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary-light file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary"
             />
-            <p className="mt-1 text-xs text-muted-foreground">PDF, Office docs, or images. Max 15MB.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              PDF, Office docs, or images. Max 15MB.
+            </p>
           </div>
           <Button type="submit" variant="primary" disabled={busy}>
             <Icon icon={Upload} size="sm" />
@@ -165,6 +214,9 @@ export function ConferenceAdminResourcesTab({
               >
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">{item.title}</p>
+                  {item.author ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">Author: {item.author}</p>
+                  ) : null}
                   {item.description ? (
                     <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
                   ) : null}
@@ -173,8 +225,19 @@ export function ConferenceAdminResourcesTab({
                   ) : null}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <Button variant="outline" size="sm" href={item.downloadUrl} target="_blank">
-                    Download
+                  {item.downloadUrl ? (
+                    <Button variant="outline" size="sm" href={item.downloadUrl} target="_blank">
+                      Open
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => openEdit(item)}
+                  >
+                    <Icon icon={Pencil} size="sm" />
+                    Edit
                   </Button>
                   <Button
                     variant="ghost"
@@ -192,15 +255,70 @@ export function ConferenceAdminResourcesTab({
         )}
       </Section>
 
+      <Modal
+        open={Boolean(editing)}
+        onClose={() => !busy && setEditing(null)}
+        title={`Edit — ${editing?.title || "material"}`}
+      >
+        <form onSubmit={handleEdit} className="space-y-4">
+          <Input
+            label="Title"
+            requiredMark
+            value={editForm.title}
+            onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
+          />
+          <Input
+            label="Author"
+            hint="Optional"
+            value={editForm.author}
+            onChange={(e) => setEditForm((p) => ({ ...p, author: e.target.value }))}
+          />
+          <Input
+            label="Description"
+            hint="Optional"
+            value={editForm.description}
+            onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+          />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Replace file
+            </label>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.txt"
+              onChange={(e) =>
+                setEditForm((p) => ({ ...p, file: e.target.files?.[0] ?? null }))
+              }
+              className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary-light file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leave empty to keep the current file
+              {editing?.fileName ? ` (${editing.fileName})` : ""}.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={busy || !editForm.title.trim()}>
+              {busy ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       <ConfirmModal
         open={Boolean(removeTarget)}
         onClose={() => !busy && setRemoveTarget(null)}
         onConfirm={confirmRemove}
         title="Remove file"
         message={
-          removeTarget
-            ? `Remove “${removeTarget.title}”? This cannot be undone.`
-            : ""
+          removeTarget ? `Remove “${removeTarget.title}”? This cannot be undone.` : ""
         }
         confirmLabel="Remove"
         variant="danger"

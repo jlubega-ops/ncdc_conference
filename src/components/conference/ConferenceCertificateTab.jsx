@@ -6,7 +6,6 @@ import { Award, Download, Mail } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
-import { CERTIFICATE_MIN_ATTENDANCE_PERCENT } from "@/lib/certificates/constants";
 
 /**
  * Embedded certificate view for a conference's Certificate tab (no dashboard links).
@@ -124,24 +123,30 @@ export function ConferenceCertificateTab({ slug }) {
         </p>
       ) : null}
 
-      <div className="mt-4 flex items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100">
-          <div
-            className={cn(
-              "h-full rounded-full",
-              row.stats.overallProgress >= CERTIFICATE_MIN_ATTENDANCE_PERCENT
-                ? "bg-primary"
-                : "bg-amber-500",
-            )}
-            style={{ width: `${row.stats.overallProgress}%` }}
-          />
-        </div>
-        <span className="text-xs font-bold text-foreground">{row.stats.overallProgress}%</span>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {row.stats.attended} attended · {row.stats.missed} missed · {row.stats.remaining}{" "}
-        remaining · min {CERTIFICATE_MIN_ATTENDANCE_PERCENT}% after conference ends
-      </p>
+      {row.stats ? (
+        <>
+          <div className="mt-4 flex items-center gap-3">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100">
+              <div
+                className={cn(
+                  "h-full rounded-full",
+                  row.eligible ? "bg-primary" : "bg-amber-500",
+                )}
+                style={{
+                  width: `${Math.min(100, Math.round((Number(row.stats.attended || 0) / Math.max(1, Number(row.stats.totalDays || 1))) * 100))}%`,
+                }}
+              />
+            </div>
+            <span className="text-xs font-bold text-foreground">
+              {row.stats.attended}/{row.stats.totalDays} days
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {row.stats.attended} attended · {row.stats.missed} missed · {row.stats.remaining}{" "}
+            remaining
+          </p>
+        </>
+      ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button

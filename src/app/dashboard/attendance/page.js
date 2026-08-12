@@ -11,7 +11,7 @@ export default async function AttendancePage() {
   }
 
   if (!session) {
-    redirect("/login?mode=access");
+    redirect("/access");
   }
 
   // Attendance now lives on the conference's Attendance tab.
