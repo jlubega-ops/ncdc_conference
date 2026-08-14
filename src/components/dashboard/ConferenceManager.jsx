@@ -2433,58 +2433,8 @@ export function ConferenceManager({ conferences }) {
                                   </p>
                                 </div>
 
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                                  <div className="w-full sm:w-36">
-                                    <TimeInput
-                                      label="Start time"
-                                      value={draft.startTime}
-                                      error={fieldErrors[programmeFieldKey(day.date, "startTime")]}
-                                      onChange={(value) =>
-                                        updateProgrammeDraft(day.date, "startTime", value)
-                                      }
-                                    />
-                                  </div>
-                                  <div className="w-full sm:w-36">
-                                    <TimeInput
-                                      label="End time"
-                                      value={draft.endTime}
-                                      error={fieldErrors[programmeFieldKey(day.date, "endTime")]}
-                                      onChange={(value) =>
-                                        updateProgrammeDraft(day.date, "endTime", value)
-                                      }
-                                    />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <Textarea
-                                      label="Programme item"
-                                      hint="Optional line breaks are shown on the programme."
-                                      rows={3}
-                                      value={draft.title}
-                                      error={fieldErrors[programmeFieldKey(day.date, "title")]}
-                                      onChange={(e) =>
-                                        updateProgrammeDraft(day.date, "title", e.target.value)
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                                {fieldErrors[programmeFieldKey(day.date, "_form")] ? (
-                                  <p className="mt-2 text-xs text-error">
-                                    {fieldErrors[programmeFieldKey(day.date, "_form")]}
-                                  </p>
-                                ) : null}
-                                <div className="mt-3">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    icon={Plus}
-                                    onClick={() => addProgrammeEntry(day.date)}
-                                  >
-                                    Add programme item
-                                  </Button>
-                                </div>
-
                                 {dayProgrammes.length ? (
-                                  <div className="mt-4 space-y-2 border-t border-border pt-4">
+                                  <div className="space-y-2">
                                     {dayProgrammes.map((item) => (
                                       <div
                                         key={`${item.date}-${item.startTime}-${item.__index}`}
@@ -2508,10 +2458,65 @@ export function ConferenceManager({ conferences }) {
                                     ))}
                                   </div>
                                 ) : (
-                                  <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-                                    No programme items added for this date.
+                                  <p className="text-xs text-muted-foreground">
+                                    No programme items added for this date yet.
                                   </p>
                                 )}
+
+                                <div
+                                  className={cn(
+                                    "mt-4 space-y-3",
+                                    dayProgrammes.length ? "border-t border-border pt-4" : "",
+                                  )}
+                                >
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                                    <div className="w-full sm:w-36">
+                                      <TimeInput
+                                        label="Start time"
+                                        value={draft.startTime}
+                                        error={fieldErrors[programmeFieldKey(day.date, "startTime")]}
+                                        onChange={(value) =>
+                                          updateProgrammeDraft(day.date, "startTime", value)
+                                        }
+                                      />
+                                    </div>
+                                    <div className="w-full sm:w-36">
+                                      <TimeInput
+                                        label="End time"
+                                        value={draft.endTime}
+                                        error={fieldErrors[programmeFieldKey(day.date, "endTime")]}
+                                        onChange={(value) =>
+                                          updateProgrammeDraft(day.date, "endTime", value)
+                                        }
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <Textarea
+                                        label="Programme item"
+                                        hint="Optional line breaks are shown on the programme."
+                                        rows={3}
+                                        value={draft.title}
+                                        error={fieldErrors[programmeFieldKey(day.date, "title")]}
+                                        onChange={(e) =>
+                                          updateProgrammeDraft(day.date, "title", e.target.value)
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                  {fieldErrors[programmeFieldKey(day.date, "_form")] ? (
+                                    <p className="text-xs text-error">
+                                      {fieldErrors[programmeFieldKey(day.date, "_form")]}
+                                    </p>
+                                  ) : null}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    icon={Plus}
+                                    onClick={() => addProgrammeEntry(day.date)}
+                                  >
+                                    Add programme item
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })}
