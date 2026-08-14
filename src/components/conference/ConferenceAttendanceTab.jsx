@@ -169,8 +169,6 @@ export function ConferenceAttendanceTab({ slug, conferenceHomeHref }) {
 
       {attendanceAllowed ? (
         <>
-          <AttendancePerformanceCard stats={stats} />
-
           <div>
             <h3 className="text-sm font-semibold text-foreground">Day-by-day record</h3>
             <ul className="mt-3 space-y-2">
@@ -199,6 +197,8 @@ export function ConferenceAttendanceTab({ slug, conferenceHomeHref }) {
               ))}
             </ul>
           </div>
+
+          <AttendancePerformanceCard stats={stats} />
 
           <AttendanceProgressCard stats={stats} />
 

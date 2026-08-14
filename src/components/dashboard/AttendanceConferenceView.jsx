@@ -7,7 +7,10 @@ import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
-import { AttendanceStatsPanel } from "@/components/dashboard/AttendanceStatsPanel";
+import {
+  AttendancePerformanceCard,
+  AttendanceProgressCard,
+} from "@/components/dashboard/AttendanceStatsPanel";
 import { formatAdminDate } from "@/components/dashboard/admin-tabs/AdminTabShell";
 
 const STATUS_LABELS = {
@@ -149,8 +152,6 @@ export function AttendanceConferenceView({ slug }) {
         </p>
       )}
 
-      <AttendanceStatsPanel stats={stats} />
-
       <div>
         <h2 className="text-sm font-semibold text-foreground">Day-by-day record</h2>
         <ul className="mt-3 space-y-2">
@@ -179,6 +180,10 @@ export function AttendanceConferenceView({ slug }) {
           ))}
         </ul>
       </div>
+
+      <AttendancePerformanceCard stats={stats} />
+
+      <AttendanceProgressCard stats={stats} />
 
       {data.marks?.length > 0 ? (
         <div>
