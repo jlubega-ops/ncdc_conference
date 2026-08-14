@@ -6,6 +6,8 @@ import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
 import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
 import { getCurrentSession } from "@/lib/auth/session";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Access with code | Conference Management",
   description: "Enter your access code to open your conference.",
@@ -28,7 +30,10 @@ export default async function AccessWithCodePage({ searchParams }) {
   let session = null;
   try {
     session = await getCurrentSession();
-  } catch {
+  } catch (err) {
+    if (err && typeof err === "object" && err.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
     /* allow page */
   }
   if (session) {

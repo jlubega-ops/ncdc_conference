@@ -8,7 +8,6 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
 import {
   getPublishedConferenceBySlug,
-  getPublishedConferences,
   isInviteOnlyConference,
 } from "@/lib/conferences/service";
 import { getMemberContentAvailability } from "@/lib/conference-content/service";
@@ -46,6 +45,8 @@ export async function generateMetadata({ params }) {
   };
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function ConferenceDetailPage({ params, searchParams }) {
   const { slug } = await params;
   const query = await searchParams;
@@ -80,8 +81,11 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
         };
       }
     }
-  } catch {
-    /* ignore */
+  } catch (err) {
+    if (err && typeof err === "object" && err.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
+    /* ignore session lookup failures */
   }
 
   // Logged-in users do not browse public conference pages.
@@ -143,9 +147,4 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
       </div>
     </div>
   );
-}
-
-export async function generateStaticParams() {
-  const conferences = await getPublishedConferences();
-  return conferences.map((c) => ({ slug: c.slug }));
 }

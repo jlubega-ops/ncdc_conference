@@ -15,6 +15,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Conference Management",
   description:
@@ -25,7 +27,10 @@ export default async function RootLayout({ children }) {
   let initialSession = null;
   try {
     initialSession = await getCurrentSession();
-  } catch {
+  } catch (err) {
+    if (err && typeof err === "object" && err.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
     initialSession = null;
   }
 

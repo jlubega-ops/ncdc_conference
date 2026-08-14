@@ -11,7 +11,10 @@ export async function redirectIfAuthenticated() {
   let session = null;
   try {
     session = await getCurrentSession();
-  } catch {
+  } catch (err) {
+    if (err && typeof err === "object" && err.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
     /* session unavailable — allow public page */
     return null;
   }
