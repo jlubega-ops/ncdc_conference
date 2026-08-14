@@ -14,6 +14,14 @@ export const defaultConferenceImage = brandAssets.building;
 const LEGACY_DEFAULT_IMAGES = new Set(["/assets/ncdc_image.jpg"]);
 
 /**
+ * Runtime uploads are not in the Next.js build `public/` folder.
+ * @param {string} src
+ */
+export function isRuntimeUploadSrc(src) {
+  return src.startsWith("/uploads/");
+}
+
+/**
  * Resolve a conference/speaker image URL, remapping removed defaults.
  * @param {string | null | undefined} src
  */

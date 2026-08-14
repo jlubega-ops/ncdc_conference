@@ -173,12 +173,12 @@ export function ConferenceAdminInfoTab({ conference }) {
                   {day.items.map((item, index) => (
                     <li
                       key={`${day.date}-${item.startTime}-${index}`}
-                      className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-sm"
+                      className="flex items-start gap-3 rounded-md border border-border bg-background px-3 py-2.5 text-sm"
                     >
-                      <span className="w-24 shrink-0 text-xs font-bold tabular-nums text-foreground sm:w-28">
+                      <span className="w-24 shrink-0 pt-0.5 text-xs font-bold tabular-nums text-foreground sm:w-28">
                         {formatProgrammeTimeSlot(item.startTime, item.endTime)}
                       </span>
-                      <span className="min-w-0 flex-1 font-medium text-primary">
+                      <span className="min-w-0 flex-1 whitespace-pre-line font-medium text-primary">
                         {item.title}
                       </span>
                     </li>

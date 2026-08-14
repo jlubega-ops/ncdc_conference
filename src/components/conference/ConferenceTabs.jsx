@@ -266,13 +266,13 @@ function ProgrammeTab({ conference, registrationStatus }) {
                 {day.items.map((session, index) => (
                   <li
                     key={`${session.startTime}-${session.title}-${index}`}
-                    className="flex items-center gap-4 rounded-md border border-border bg-background px-4 py-3 text-sm"
+                    className="flex items-start gap-4 rounded-md border border-border bg-background px-4 py-3 text-sm"
                   >
-                    <span className="w-24 shrink-0 text-xs font-bold tabular-nums text-foreground sm:w-28">
+                    <span className="w-24 shrink-0 pt-0.5 text-xs font-bold tabular-nums text-foreground sm:w-28">
                       {formatProgrammeTimeSlot(session.startTime, session.endTime)}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-primary">{session.title}</p>
+                      <p className="whitespace-pre-line font-medium text-primary">{session.title}</p>
                       {session.speaker ? (
                         <p className="mt-1 text-xs text-muted-foreground">{session.speaker}</p>
                       ) : null}

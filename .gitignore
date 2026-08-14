@@ -22,6 +22,7 @@
 
 # private uploads (payment proofs, etc.)
 /storage/private/
+/storage/public/
 
 # misc
 .DS_Store

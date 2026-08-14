@@ -19,6 +19,8 @@ import { toast } from "react-toastify";
 import { useSession } from "@/components/auth/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { TimeInput } from "@/components/ui/TimeInput";
 import { Icon } from "@/components/ui/Icon";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -197,6 +199,8 @@ function hasProgrammeOverlap(programmes, nextEntry) {
     const itemStart = toMinutes(item.startTime);
     const itemEnd = toMinutes(item.endTime);
     if (itemStart === null || itemEnd === null) return false;
+    // Same start and end on the same date is allowed (parallel items).
+    if (itemStart === nextStart && itemEnd === nextEnd) return false;
     return nextStart < itemEnd && nextEnd > itemStart;
   });
 }
@@ -762,7 +766,7 @@ export function ConferenceManager({ conferences }) {
       hasProgrammeOverlap(currentProgrammes, nextEntry)
     ) {
       draftErrors[programmeFieldKey(date, "_form")] =
-        "Programme times cannot overlap on the same date.";
+        "Programme times cannot overlap unless they share the same start and end time.";
     }
 
     if (Object.keys(draftErrors).length > 0) {
@@ -2385,8 +2389,9 @@ export function ConferenceManager({ conferences }) {
                   <div className="space-y-4">
                     <SectionErrorAlert messages={getSectionErrorMessages(fieldErrors, "programme")} />
                     <p className="text-xs text-muted-foreground">
-                      Add programme items under each conference date. Times must be inside the
-                      day window and cannot overlap.
+                      Add programme items under each conference date. Times must be inside the day
+                      window. Items may share the same start and end time; other overlaps (for
+                      example 11:00–12:00 and 11:00–11:30) are not allowed.
                     </p>
                     {(editing.conferenceDays || []).filter((day) => day.date).length === 0 ? (
                       <p className="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
@@ -2429,31 +2434,31 @@ export function ConferenceManager({ conferences }) {
                                 </div>
 
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                                  <div className="w-full sm:w-28">
-                                    <Input
+                                  <div className="w-full sm:w-36">
+                                    <TimeInput
                                       label="Start time"
-                                      type="time"
                                       value={draft.startTime}
                                       error={fieldErrors[programmeFieldKey(day.date, "startTime")]}
-                                      onChange={(e) =>
-                                        updateProgrammeDraft(day.date, "startTime", e.target.value)
+                                      onChange={(value) =>
+                                        updateProgrammeDraft(day.date, "startTime", value)
                                       }
                                     />
                                   </div>
-                                  <div className="w-full sm:w-28">
-                                    <Input
+                                  <div className="w-full sm:w-36">
+                                    <TimeInput
                                       label="End time"
-                                      type="time"
                                       value={draft.endTime}
                                       error={fieldErrors[programmeFieldKey(day.date, "endTime")]}
-                                      onChange={(e) =>
-                                        updateProgrammeDraft(day.date, "endTime", e.target.value)
+                                      onChange={(value) =>
+                                        updateProgrammeDraft(day.date, "endTime", value)
                                       }
                                     />
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <Input
+                                    <Textarea
                                       label="Programme item"
+                                      hint="Optional line breaks are shown on the programme."
+                                      rows={3}
                                       value={draft.title}
                                       error={fieldErrors[programmeFieldKey(day.date, "title")]}
                                       onChange={(e) =>
@@ -2483,12 +2488,12 @@ export function ConferenceManager({ conferences }) {
                                     {dayProgrammes.map((item) => (
                                       <div
                                         key={`${item.date}-${item.startTime}-${item.__index}`}
-                                        className="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
+                                        className="flex items-start gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
                                       >
-                                        <p className="w-24 shrink-0 text-xs font-bold tabular-nums text-foreground sm:w-28">
+                                        <p className="w-24 shrink-0 pt-0.5 text-xs font-bold tabular-nums text-foreground sm:w-28">
                                           {formatProgrammeTimeSlot(item.startTime, item.endTime)}
                                         </p>
-                                        <p className="min-w-0 flex-1 text-sm font-medium text-primary">
+                                        <p className="min-w-0 flex-1 whitespace-pre-line text-sm font-medium text-primary">
                                           {item.title}
                                         </p>
                                         <Button

@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { requireConferenceManager } from "@/lib/auth/guards";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { savePublicUpload } from "@/lib/storage/public-uploads";
 
 export const runtime = "nodejs";
 
@@ -43,14 +42,8 @@ export async function POST(request) {
       .webp({ quality: 82 })
       .toBuffer();
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "speaker-photos");
-    await mkdir(uploadDir, { recursive: true });
-
     const filename = `${Date.now()}-${randomUUID()}.webp`;
-    const filePath = path.join(uploadDir, filename);
-    await writeFile(filePath, compressed);
-
-    const url = `/uploads/speaker-photos/${filename}`;
+    const url = await savePublicUpload("speaker-photos", compressed, filename);
     await logActivity({
       session,
       request,

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { cn } from "@/lib/cn";
-import { resolveConferenceImageSrc } from "@/lib/assets";
+import { isRuntimeUploadSrc, resolveConferenceImageSrc } from "@/lib/assets";
 
 /**
  * @param {object} props
@@ -17,14 +17,16 @@ export function ConferenceImage({
   objectFit = "cover",
   priority = false,
 }) {
+  const resolved = resolveConferenceImageSrc(src);
   return (
     <Image
-      src={resolveConferenceImageSrc(src)}
+      src={resolved}
       alt={alt}
       fill
       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
       className={cn(objectFit === "cover" ? "object-cover" : "object-contain", className)}
       priority={priority}
+      unoptimized={isRuntimeUploadSrc(resolved)}
     />
   );
 }
