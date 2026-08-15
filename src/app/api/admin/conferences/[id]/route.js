@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
-import { mapConferenceForUi, revalidatePublishedConferenceCache } from "@/lib/conferences/service";
+import { mapConferenceForUi } from "@/lib/conferences/service";
+import { revalidatePublishedConferenceCache } from "@/lib/conferences/public-cache";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";

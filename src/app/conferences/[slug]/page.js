@@ -6,10 +6,8 @@ import { canManageConference } from "@/lib/auth/conference-access";
 import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
-import {
-  getPublishedConferenceBySlugCached,
-  isInviteOnlyConference,
-} from "@/lib/conferences/service";
+import { isInviteOnlyConference } from "@/lib/conferences/service";
+import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
 import { getMemberContentAvailability } from "@/lib/conference-content/service";
 
 const AUTH_REQUIRED_TABS = new Set([

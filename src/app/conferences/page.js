@@ -1,6 +1,6 @@
 import { ConferenceCard } from "@/components/ConferenceCard";
 import { RedirectIfAuthenticatedClient } from "@/components/auth/RedirectIfAuthenticatedClient";
-import { getPublishedConferencesCached } from "@/lib/conferences/service";
+import { getPublishedConferencesCached } from "@/lib/conferences/public-cache";
 
 export const revalidate = 60;
 

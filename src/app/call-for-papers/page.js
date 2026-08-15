@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { buildOpenCalls, getPublishedConferencesCached } from "@/lib/conferences/service";
+import { buildOpenCalls } from "@/lib/conferences/service";
+import { getPublishedConferencesCached } from "@/lib/conferences/public-cache";
 import { formatDeadlineDate } from "@/lib/conferences/utils";
 
 export const revalidate = 60;
