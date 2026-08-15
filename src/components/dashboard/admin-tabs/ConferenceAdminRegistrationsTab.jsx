@@ -136,20 +136,24 @@ export function ConferenceAdminRegistrationsTab({
 
   const checkedCount = checkedIds.size;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
-      const res = await fetch(`/api/admin/conferences/${conferenceId}/registrations`);
+      const res = await fetch(`/api/admin/conferences/${conferenceId}/registrations`, {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load registrations.");
       setRegistrations(data.registrations ?? []);
-      setCheckedIds(new Set());
+      if (!silent) setCheckedIds(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load registrations.");
-      setRegistrations([]);
+      if (!silent) setRegistrations([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [conferenceId]);
 
@@ -233,7 +237,7 @@ export function ConferenceAdminRegistrationsTab({
       }
       setBulkConfirmOpen(false);
       setCheckedIds(new Set());
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not send access codes.");
     } finally {
@@ -270,7 +274,7 @@ export function ConferenceAdminRegistrationsTab({
           : "Revision request sent.",
       );
       closeModal();
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update registration.");
     } finally {
@@ -340,7 +344,7 @@ export function ConferenceAdminRegistrationsTab({
       if (!res.ok) throw new Error(data.error || "Could not update details.");
       toast.success(data.message || "Details updated.");
       setEditing(false);
-      await load();
+      await load({ silent: true });
       if (data.registration) setSelected(data.registration);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update details.");
@@ -367,7 +371,7 @@ export function ConferenceAdminRegistrationsTab({
       setDeleteTarget(null);
       setDeleteConfirm("");
       if (selected?.id === deleteTarget.id) closeModal();
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not delete registration.");
     } finally {
@@ -412,8 +416,14 @@ export function ConferenceAdminRegistrationsTab({
       setAddForm(EMPTY_PERSON);
       setAddForce(false);
       setAddWarning("");
-      await load();
-      if (data.registration) setSelected(data.registration);
+      if (data.registration) {
+        setRegistrations((prev) => {
+          const next = prev.filter((row) => row.id !== data.registration.id);
+          return [data.registration, ...next];
+        });
+        setSelected(data.registration);
+      }
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not add attendee.");
     } finally {
@@ -452,7 +462,7 @@ export function ConferenceAdminRegistrationsTab({
       setRepForm(EMPTY_PERSON);
       setRepForce(false);
       setRepWarning("");
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not assign representative.");
     } finally {
@@ -460,7 +470,7 @@ export function ConferenceAdminRegistrationsTab({
     }
   }
 
-  if (loading) {
+  if (loading && registrations.length === 0) {
     return <p className="text-sm text-muted-foreground">Loading registrations…</p>;
   }
 
@@ -751,7 +761,7 @@ export function ConferenceAdminRegistrationsTab({
         conferenceId={conferenceId}
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onUploaded={load}
+        onUploaded={() => load({ silent: true })}
       />
 
       <Modal

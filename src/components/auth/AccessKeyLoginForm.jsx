@@ -39,9 +39,14 @@ export function AccessKeyLoginForm() {
           accessKey: normalizeAccessKeyInput(accessKey),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "Access verification failed.");
+        setError(
+          data.error ||
+            (res.status === 403
+              ? "This conference is not yet open for access."
+              : "Could not verify this access code. Please try again."),
+        );
         return;
       }
       await refreshSession();

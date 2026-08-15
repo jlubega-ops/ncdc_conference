@@ -30,6 +30,8 @@ function resolveAccessKeyMeta(accessKeys, row) {
   return { lastAccessAt: latest, accessCode: displayCode, emailedAt };
 }
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_request, { params }) {
   const { id } = await params;
   const access = await authorizeConferenceAccess(id);
@@ -72,25 +74,32 @@ export async function GET(_request, { params }) {
   const keyEmails = new Set(accessKeys.map((k) => k.email.toLowerCase()));
   const keyUserIds = new Set(accessKeys.map((k) => k.userId).filter(Boolean));
 
-  return NextResponse.json({
-    registrations: rows.map((row) => {
-      const email = row.user?.email?.toLowerCase();
-      const hasAccessKey =
-        (email && keyEmails.has(email)) || (row.userId && keyUserIds.has(row.userId));
-      const meta = resolveAccessKeyMeta(accessKeys, {
-        userId: row.userId,
-        email,
-      });
-      return mapRegistrationForAdmin(row, {
-        hasAccessKey: Boolean(hasAccessKey),
-        lastAccessAt: meta.lastAccessAt,
-        accessCode: meta.accessCode,
-        accessCodeSent: Boolean(meta.emailedAt),
-        representatives: repsByPrincipal.get(row.userId) || [],
-        representing: repsByRepresentative.get(row.userId) || [],
-      });
-    }),
-  });
+  return NextResponse.json(
+    {
+      registrations: rows.map((row) => {
+        const email = row.user?.email?.toLowerCase();
+        const hasAccessKey =
+          (email && keyEmails.has(email)) || (row.userId && keyUserIds.has(row.userId));
+        const meta = resolveAccessKeyMeta(accessKeys, {
+          userId: row.userId,
+          email,
+        });
+        return mapRegistrationForAdmin(row, {
+          hasAccessKey: Boolean(hasAccessKey),
+          lastAccessAt: meta.lastAccessAt,
+          accessCode: meta.accessCode,
+          accessCodeSent: Boolean(meta.emailedAt),
+          representatives: repsByPrincipal.get(row.userId) || [],
+          representing: repsByRepresentative.get(row.userId) || [],
+        });
+      }),
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }
 
 export async function POST(request, { params }) {
