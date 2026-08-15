@@ -30,6 +30,7 @@ export async function POST(request, { params }) {
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not email certificate.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const status = err?.status === 429 ? 429 : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }

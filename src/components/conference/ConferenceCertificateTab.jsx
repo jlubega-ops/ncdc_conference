@@ -97,6 +97,8 @@ export function ConferenceCertificateTab({ slug }) {
   }
 
   const canAct = row.eligible;
+  const canEmail = Boolean(row.canEmail ?? (canAct && !row.emailCooldownMessage));
+  const emailLabel = canEmail ? "Send to email" : row.nextEmailAt ? "Email sent" : "Send to email";
 
   return (
     <div
@@ -158,24 +160,37 @@ export function ConferenceCertificateTab({ slug }) {
           <Icon icon={Download} size="sm" />
           {busy ? "Preparing certificate…" : "Download PDF"}
         </Button>
-        <Button variant="outline" size="sm" disabled={!canAct || busy} onClick={emailCertificate}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canEmail || busy}
+          title={row.emailCooldownMessage || undefined}
+          onClick={emailCertificate}
+        >
           <Icon icon={Mail} size="sm" />
-          {busy ? "Working…" : "Send to email"}
+          {busy ? "Working…" : emailLabel}
         </Button>
       </div>
       {busy ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          First download can take a few seconds if many people are generating certificates at once.
-          Please keep this page open.
+          First download can take up to a couple of minutes if many people generate PDFs at once.
+          Keep this page open. After that, you can download again as often as you like.
         </p>
       ) : null}
 
       {row.certificate?.emailedAt ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Emailed on{" "}
-          {new Date(row.certificate.emailedAt).toLocaleDateString("en-UG", {
-            dateStyle: "medium",
-          })}
+          {row.emailCooldownMessage
+            ? row.emailCooldownMessage
+            : `Last emailed ${new Date(row.certificate.emailedAt).toLocaleString("en-UG", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}. You can email again after 24 hours.`}
+        </p>
+      ) : canAct ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Prefer Download PDF if you can — email is limited to once per 24 hours per person because
+          of Gmail sending limits.
         </p>
       ) : null}
     </div>

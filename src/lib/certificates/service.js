@@ -21,6 +21,7 @@ import {
 import { buildCertificateVerifyUrl, renderCertificatePdf } from "@/lib/certificates/pdf";
 import { readCachedCertificatePdf, writeCachedCertificatePdf } from "@/lib/certificates/pdf-cache";
 import { withCertificatePdfSlot } from "@/lib/certificates/render-queue";
+import { getCertificateEmailCooldown } from "@/lib/certificates/email-cooldown";
 
 const MAX_NUMBER_ATTEMPTS = 8;
 
@@ -118,6 +119,7 @@ export async function getCertificateSummaries(userId) {
       mapped.status === "completed" ||
       (stats.remaining === 0 && stats.elapsed >= stats.totalDays && stats.totalDays > 0);
 
+    const cooldown = getCertificateEmailCooldown(cert?.emailedAt);
     const message = !eligible
       ? certificateEligibilityMessage(stats, mapped)
       : cert
@@ -136,6 +138,9 @@ export async function getCertificateSummaries(userId) {
       stats,
       eligible,
       conferenceEnded,
+      canEmail: Boolean(eligible && !cooldown.blocked),
+      nextEmailAt: cooldown.retryAt ? cooldown.retryAt.toISOString() : null,
+      emailCooldownMessage: cooldown.message,
       certificate: cert
         ? {
             id: cert.id,
@@ -341,18 +346,27 @@ export async function emailCertificateToUser(userId, slug) {
   }
 
   const cert = await issueCertificateForUser(userId, slug, { sendEmail: false });
+  const cooldown = getCertificateEmailCooldown(cert.emailedAt);
+  if (cooldown.blocked) {
+    const error = new Error(cooldown.message);
+    error.status = 429;
+    throw error;
+  }
+
   const result = await sendCertificateEmail(cert, ctx.userEmail);
 
-  await prisma.conferenceCertificate.update({
-    where: { id: cert.id },
-    data: { emailedAt: new Date() },
-  });
+  if (result.ok) {
+    await prisma.conferenceCertificate.update({
+      where: { id: cert.id },
+      data: { emailedAt: new Date() },
+    });
+  }
 
   return {
     ok: result.ok,
     skipped: result.skipped,
     message: result.ok
-      ? `Certificate sent to ${ctx.userEmail}.`
+      ? `Certificate sent to ${ctx.userEmail}. You can email it again after 24 hours. Download is unlimited.`
       : result.skipped
         ? "SMTP is not configured. Download the PDF instead."
         : result.error,

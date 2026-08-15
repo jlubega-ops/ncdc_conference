@@ -98,6 +98,7 @@ export function CertificatesList() {
       {items.map((row) => {
         const busy = busySlug === row.conference.slug;
         const canAct = row.eligible;
+        const canEmail = Boolean(row.canEmail ?? (canAct && !row.emailCooldownMessage));
 
         return (
           <li
@@ -175,19 +176,27 @@ export function CertificatesList() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={!canAct || busy}
+                    disabled={!canEmail || busy}
+                    title={row.emailCooldownMessage || undefined}
                     onClick={() => emailCertificate(row.conference.slug)}
                   >
                     <Icon icon={Mail} size="sm" />
-                    Send to email
+                    {canEmail ? "Send to email" : "Email sent"}
                   </Button>
                 </div>
                 {row.certificate?.emailedAt ? (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Emailed on{" "}
-                    {new Date(row.certificate.emailedAt).toLocaleDateString("en-UG", {
-                      dateStyle: "medium",
-                    })}
+                    {row.emailCooldownMessage
+                      ? row.emailCooldownMessage
+                      : `Last emailed ${new Date(row.certificate.emailedAt).toLocaleString("en-UG", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}. You can email again after 24 hours.`}
+                  </p>
+                ) : canAct ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Prefer Download PDF — email is limited to once per 24 hours because of Gmail
+                    sending limits.
                   </p>
                 ) : null}
               </div>
