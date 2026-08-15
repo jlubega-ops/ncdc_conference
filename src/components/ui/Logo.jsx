@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
-import { brandAssets, isRuntimeUploadSrc } from "@/lib/assets";
+import { brandAssets } from "@/lib/assets";
 import { useOrganiserBrand } from "@/components/layout/OrganiserBrandProvider";
+import { OrganiserLogo } from "@/components/ui/OrganiserLogo";
 
 /**
  * @param {object} props
@@ -18,24 +18,21 @@ export function Logo({ size = "md", showText = true, linkToHome = true, classNam
   const label = brand?.name || "Conference Management";
 
   const sizes = {
-    sm: { img: 32, text: "text-sm" },
-    md: { img: 40, text: "text-sm" },
-    lg: { img: 52, text: "text-base" },
+    sm: { height: "h-8", maxWidth: "max-w-[9rem]", text: "text-sm" },
+    md: { height: "h-9 sm:h-10", maxWidth: "max-w-[11rem]", text: "text-sm" },
+    lg: { height: "h-10 sm:h-12", maxWidth: "max-w-[14rem]", text: "text-base" },
   };
 
-  const { img, text } = sizes[size];
+  const { height, maxWidth, text } = sizes[size];
 
   const content = (
-    <span className={cn("flex shrink-0 items-center gap-3", className)}>
-      <Image
+    <span className={cn("flex min-w-0 shrink items-center gap-3", className)}>
+      <OrganiserLogo
         src={logoSrc}
         alt={label}
-        width={img * 2}
-        height={img}
-        className="h-8 w-auto object-contain sm:h-10"
-        style={{ width: "auto", height: "auto", maxHeight: size === "lg" ? "2.5rem" : "2rem" }}
+        maxHeightClass={height}
+        maxWidthClass={maxWidth}
         priority={size !== "sm"}
-        unoptimized={isRuntimeUploadSrc(logoSrc)}
       />
       {showText ? (
         <span className="hidden sm:block">

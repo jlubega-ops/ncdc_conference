@@ -85,7 +85,11 @@ export function CertificateVerify({ initialToken = null }) {
           <span className="rounded-lg bg-primary p-2.5 text-primary-foreground">
             {result?.brand?.logo ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={result.brand.logo} alt="" className="h-6 w-6 object-contain" />
+              <img
+                src={result.brand.logo}
+                alt=""
+                className="h-6 w-auto max-w-[5.5rem] object-contain"
+              />
             ) : (
               <Icon icon={Award} size="md" />
             )}

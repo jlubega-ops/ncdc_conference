@@ -25,6 +25,7 @@ import { Icon } from "@/components/ui/Icon";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { ConferenceImage } from "@/components/ConferenceImage";
+import { OrganiserLogo } from "@/components/ui/OrganiserLogo";
 import {
   CATEGORIES,
   DEFAULT_PAID_VISIBILITY,
@@ -3679,8 +3680,8 @@ export function ConferenceManager({ conferences }) {
                       <div>
                         <FieldLabel>Organisation logo</FieldLabel>
                         <p className="mb-2 text-xs text-muted-foreground">
-                          Square PNG or JPG works best. Used as the conference favicon, email header,
-                          and certificate logo.
+                          PNG or JPG. Wide wordmarks are kept as-is (not cropped to a square). Used in
+                          the header, emails, favicon, and certificates.
                         </p>
                         <input
                           type="file"
@@ -3699,11 +3700,12 @@ export function ConferenceManager({ conferences }) {
                           <p className="mt-1.5 text-xs text-error">{fieldErrors.organiserLogo}</p>
                         ) : null}
                         {editing.organiserLogo ? (
-                          <div className="relative mt-3 h-20 w-20 overflow-hidden rounded-md border border-border bg-surface">
-                            <ConferenceImage
+                          <div className="mt-3 inline-flex max-w-[16rem] items-center rounded-md border border-border bg-surface px-2 py-2">
+                            <OrganiserLogo
                               src={editing.organiserLogo}
                               alt="Organisation logo"
-                              objectFit="contain"
+                              maxHeightClass="h-16"
+                              maxWidthClass="max-w-[15rem]"
                             />
                           </div>
                         ) : null}

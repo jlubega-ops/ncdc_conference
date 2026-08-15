@@ -68,8 +68,9 @@ const styles = StyleSheet.create({
     backgroundColor: C.greenLight,
   },
   logo: {
-    width: 48,
-    height: 48,
+    height: 40,
+    maxWidth: 120,
+    objectFit: "contain",
     marginRight: 14,
   },
   headerTextBlock: {

@@ -6,6 +6,7 @@ import { Award, Download, Mail } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { cn } from "@/lib/cn";
 
 /**
  * Embedded certificate view for a conference's Certificate tab (no dashboard links).

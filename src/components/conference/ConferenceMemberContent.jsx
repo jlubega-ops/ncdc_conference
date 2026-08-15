@@ -453,11 +453,3 @@ export function ConferenceMemberMaterials({
     </div>
   );
 }
-
-/**
- * @deprecated Presentations are shown under Materials → Speakers & presentations.
- * @param {{ slug: string; registrationStatus: string | null; canAccessContent?: boolean }} props
- */
-export function ConferenceMemberPresentations(props) {
-  return <ConferenceMemberMaterials {...props} />;
-}

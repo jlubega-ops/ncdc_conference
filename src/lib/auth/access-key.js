@@ -1,7 +1,6 @@
 import { createHmac, randomBytes } from "crypto";
 import { hashAccessKey } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
-import { normalizeOrganiserShortName } from "@/lib/conferences/reference";
 
 /** Uppercase charset without ambiguous characters (0, O, 1, I, L). */
 export const ACCESS_KEY_CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -66,21 +65,6 @@ export async function generateUniqueAccessCode(
     if (!existing) return code;
   }
   throw new Error("Could not generate a unique access code. Try again.");
-}
-
-/**
- * @param {string} orgShort
- * @param {number} year
- * @param {string} suffix
- */
-export function formatAccessKey(orgShort, year, suffix) {
-  const org = normalizeOrganiserShortName(orgShort);
-  return `${org}/CONF${year}/${String(suffix).toUpperCase()}`;
-}
-
-/** @deprecated Prefer short displayCode; kept for legacy email text. */
-export function displayAccessKey(orgShort, year, suffix) {
-  return formatAccessKey(orgShort, year, suffix);
 }
 
 /**

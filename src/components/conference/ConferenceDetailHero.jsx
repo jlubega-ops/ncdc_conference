@@ -1,5 +1,6 @@
 import { Calendar, MapPin, Tag } from "lucide-react";
 import { ConferenceImage } from "@/components/ConferenceImage";
+import { OrganiserLogo } from "@/components/ui/OrganiserLogo";
 import { Icon } from "@/components/ui/Icon";
 import { STATUS_LABELS } from "@/lib/conferences/constants";
 import { formatDeadlineDate } from "@/lib/conferences/utils";
@@ -43,11 +44,12 @@ export function ConferenceDetailHero({ conference, compact = false }) {
           {conference.organiserLogo || conference.organiserName ? (
             <div className="mt-2 flex items-center gap-2">
               {conference.organiserLogo ? (
-                <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md border border-white/30 bg-white/90">
-                  <ConferenceImage
+                <span className="inline-flex max-h-9 max-w-[10rem] items-center rounded-md border border-white/30 bg-white/90 px-1.5 py-0.5">
+                  <OrganiserLogo
                     src={conference.organiserLogo}
                     alt={conference.organiserName || "Organiser"}
-                    objectFit="contain"
+                    maxHeightClass="h-7 sm:h-8"
+                    maxWidthClass="max-w-[9.5rem]"
                   />
                 </span>
               ) : null}

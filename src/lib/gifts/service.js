@@ -602,12 +602,3 @@ export async function addGiftRecipientAndIssue({
       : "Person added to the gifts list only (not registered for the conference).",
   };
 }
-
-/** @deprecated Use addGiftRecipientAndIssue */
-export async function addAttendeeAndIssueGifts(params) {
-  return addGiftRecipientAndIssue({
-    ...params,
-    acknowledged: Boolean(params.forceDuplicate || params.acknowledged),
-    comment: params.comment,
-  });
-}

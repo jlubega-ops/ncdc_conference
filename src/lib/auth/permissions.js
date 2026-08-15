@@ -5,7 +5,6 @@ export const PERMISSIONS = {
   DASHBOARD: "dashboard",
   PROFILE: "profile",
   USERS: "users",
-  ALL_CONFERENCES: "all_conferences",
   MANAGE_CONFERENCE: "manage_conference",
   SUBMISSIONS: "submissions",
   MY_SUBMISSIONS: "my_submissions",
@@ -20,7 +19,6 @@ export const PERMISSIONS = {
   REGISTRATIONS: "registrations",
   MY_REGISTRATIONS: "my_registrations",
   REPORTS: "reports",
-  ACCESS_KEYS: "access_keys",
   ACTIVITY_LOG: "activity_log",
 };
 
@@ -34,7 +32,6 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.REVIEW_QUEUE,
     PERMISSIONS.REGISTRATIONS,
     PERMISSIONS.REPORTS,
-    PERMISSIONS.ACCESS_KEYS,
     PERMISSIONS.ACTIVITY_LOG,
   ],
   CONFERENCE_ADMIN: [
@@ -45,7 +42,6 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.REVIEW_QUEUE,
     PERMISSIONS.REGISTRATIONS,
     PERMISSIONS.REPORTS,
-    PERMISSIONS.ACCESS_KEYS,
   ],
   REVIEWER: [
     PERMISSIONS.DASHBOARD,

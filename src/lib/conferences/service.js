@@ -280,14 +280,6 @@ export async function getConferenceByIdForAdmin(id, session) {
 
 /**
  * @param {Array<any>} conferences
- * @param {number} [limit]
- */
-export function buildFeaturedConferences(conferences, limit = 6) {
-  return conferences.filter((c) => c.featured).slice(0, limit);
-}
-
-/**
- * @param {Array<any>} conferences
  */
 export function buildOpenCalls(conferences) {
   return conferences
@@ -298,37 +290,4 @@ export function buildOpenCalls(conferences) {
       deadline: c.cfpCloseAt,
     }))
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-}
-
-/**
- * @param {Array<any>} conferences
- * @param {number} [limit]
- */
-export function buildUpcomingDeadlines(conferences, limit = 6) {
-  const now = new Date();
-  const items = conferences.flatMap((c) => {
-    const entries = [];
-    if (c.cfpCloseAt) {
-      entries.push({
-        date: c.cfpCloseAt,
-        label: "Call for papers closes",
-        conference: c.title,
-        slug: c.slug,
-      });
-    }
-    if (c.registrationCloseAt) {
-      entries.push({
-        date: c.registrationCloseAt,
-        label: "Registration closes",
-        conference: c.title,
-        slug: c.slug,
-      });
-    }
-    return entries;
-  });
-
-  return items
-    .filter((d) => d?.date && new Date(d.date) >= now)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, limit);
 }

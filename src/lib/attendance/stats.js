@@ -96,6 +96,3 @@ export function computeAttendanceStats(days, marks, timeZone) {
     dayBreakdown,
   };
 }
-
-/** @deprecated Use isCertificateEligible from @/lib/certificates/eligibility */
-export { isCertificateEligible } from "@/lib/certificates/eligibility";

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Icon } from "@/components/ui/Icon";
 import { ConferenceImage } from "@/components/ConferenceImage";
+import { OrganiserLogo } from "@/components/ui/OrganiserLogo";
 import {
   PAID_VISIBILITY_OPTIONS,
   REGISTRATION_MODE_LABELS,
@@ -59,11 +60,12 @@ export function ConferenceAdminInfoTab({ conference }) {
         {conference.organiserLogo ? (
           <div>
             <p className="text-xs font-medium text-muted-foreground">Organisation logo</p>
-            <div className="relative mt-2 h-16 w-16 overflow-hidden rounded-md border border-border bg-surface">
-              <ConferenceImage
+            <div className="mt-2 inline-flex max-w-[14rem] items-center rounded-md border border-border bg-surface px-2 py-1.5">
+              <OrganiserLogo
                 src={conference.organiserLogo}
                 alt={conference.organiserName || "Organisation logo"}
-                objectFit="contain"
+                maxHeightClass="h-12"
+                maxWidthClass="max-w-[13rem]"
               />
             </div>
           </div>

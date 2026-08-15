@@ -27,12 +27,6 @@ export function getHeaderNavLinks(session) {
   ];
 }
 
-/** @deprecated Use getHeaderNavLinks */
-export const attendeeHeaderNav = [];
-
-/** @deprecated Use publicNavLinks */
-export const mainNavLinks = publicNavLinks;
-
 export const footerLinks = {
   about: [
     { label: "About", href: "/about" },

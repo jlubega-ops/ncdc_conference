@@ -39,10 +39,10 @@ export async function POST(request) {
     const compressed = await sharp(inputBuffer)
       .rotate()
       .resize({
-        width: 512,
-        height: 512,
-        fit: "contain",
-        background: { r: 255, g: 255, b: 255, alpha: 0 },
+        width: 640,
+        height: 320,
+        fit: "inside",
+        withoutEnlargement: true,
       })
       .png({ compressionLevel: 9 })
       .toBuffer();
