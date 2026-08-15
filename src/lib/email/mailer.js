@@ -38,7 +38,7 @@ function formatSmtpError(err) {
  * Sends email; never throws. Registration and other flows should continue if mail fails.
  * @param {{ to: string, subject: string, html: string, text?: string, attachments?: Array<{ filename: string; content: Buffer; contentType?: string }> }} options
  */
-export async function sendEmail({ to, subject, html, text, attachments }) {
+export async function sendEmail({ to, subject, html, text, attachments, fromName }) {
   const config = getSmtpConfig();
   const transport = getTransporter();
 
@@ -47,9 +47,16 @@ export async function sendEmail({ to, subject, html, text, attachments }) {
     return { ok: false, skipped: true, error: "SMTP not configured" };
   }
 
+  let from = config.from;
+  if (fromName) {
+    const safe = String(fromName).replace(/[\r\n"]/g, "").slice(0, 80);
+    const addr = /<([^>]+)>/.exec(config.from)?.[1] || config.from;
+    from = `"${safe}" <${addr}>`;
+  }
+
   try {
     await transport.sendMail({
-      from: config.from,
+      from,
       to,
       subject,
       html,

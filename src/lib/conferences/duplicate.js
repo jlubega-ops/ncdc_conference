@@ -51,6 +51,7 @@ export async function duplicateConference(conferenceId, createdById) {
       description: source.description,
       organiserName: source.organiserName,
       organiserShortName: source.organiserShortName,
+      organiserLogo: source.organiserLogo,
       theme: source.theme,
       subThemes: source.subThemes ?? undefined,
       startDate: source.startDate,

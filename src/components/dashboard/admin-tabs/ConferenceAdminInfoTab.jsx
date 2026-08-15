@@ -56,6 +56,18 @@ export function ConferenceAdminInfoTab({ conference }) {
         <DetailBlock label="Slug" value={conference.slug} />
         <DetailBlock label="Organisation" value={conference.organiserName} />
         <DetailBlock label="Org short name" value={conference.organiserShortName} />
+        {conference.organiserLogo ? (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Organisation logo</p>
+            <div className="relative mt-2 h-16 w-16 overflow-hidden rounded-md border border-border bg-surface">
+              <ConferenceImage
+                src={conference.organiserLogo}
+                alt={conference.organiserName || "Organisation logo"}
+                objectFit="contain"
+              />
+            </div>
+          </div>
+        ) : null}
         <DetailBlock
           label="Paper submissions"
           value={conference.allowPaperSubmissions ? "Enabled" : "Disabled"}

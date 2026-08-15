@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 function certificatePdfPath(certificateId) {
@@ -33,4 +33,15 @@ export async function writeCachedCertificatePdf(certificateId, buffer) {
   const dir = path.dirname(filePath);
   await mkdir(/* turbopackIgnore: true */ dir, { recursive: true });
   await writeFile(/* turbopackIgnore: true */ filePath, buffer);
+}
+
+/**
+ * @param {string} certificateId
+ */
+export async function deleteCachedCertificatePdf(certificateId) {
+  try {
+    await unlink(/* turbopackIgnore: true */ certificatePdfPath(certificateId));
+  } catch {
+    /* missing cache is fine */
+  }
 }

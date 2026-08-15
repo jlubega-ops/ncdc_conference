@@ -6,6 +6,7 @@ import {
 import { getConferenceYear } from "@/lib/conferences/registrable";
 import { sendEmail } from "@/lib/email/mailer";
 import { wrapEmailTemplate } from "@/lib/email/templates";
+import { emailBrandFromConference } from "@/lib/conferences/brand";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -54,10 +55,12 @@ export async function issueAndEmailAccessKey({
 
     const emailResult = await sendEmail({
       to: email,
+      fromName: emailBrandFromConference(conference).name,
       subject: `Your access code — ${conference.title}`,
       html: wrapEmailTemplate({
         title: "Conference access code",
         preheader: `Access code for ${conference.title}`,
+        brand: emailBrandFromConference(conference),
         bodyHtml: `
           <p>Hello ${name},</p>
           <p>You can now access <strong>${conference.title}</strong> with the access code below. This code is unique on the platform and only opens this conference for you.</p>

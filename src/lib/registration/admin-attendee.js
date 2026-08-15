@@ -215,6 +215,8 @@ export async function addAttendeeByAdmin({
         },
       },
     });
+    const { invalidateCertificatePdfsForUser } = await import("@/lib/certificates/service");
+    await invalidateCertificatePdfsForUser(user.id).catch(() => {});
     const hasRole = user.roles.some(
       (r) => r.role === "ATTENDEE" && r.conferenceId === conferenceId,
     );

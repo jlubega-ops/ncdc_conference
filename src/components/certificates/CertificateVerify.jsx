@@ -12,6 +12,7 @@ import {
   certificateNumberToVerifyToken,
   verifyTokenToCertificateNumber,
 } from "@/lib/certificates/number";
+import { OrganiserBrandSetter } from "@/components/layout/OrganiserBrandProvider";
 
 function formatIssuedDate(iso) {
   if (!iso) return "—";
@@ -78,16 +79,22 @@ export function CertificateVerify({ initialToken = null }) {
 
   return (
     <div className="mx-auto max-w-xl">
+      {result?.valid && result.brand ? <OrganiserBrandSetter brand={result.brand} /> : null}
       <div className="rounded-xl border border-primary/20 bg-linear-to-br from-primary-light/80 via-surface to-surface p-6 shadow-sm">
         <div className="flex items-start gap-3">
           <span className="rounded-lg bg-primary p-2.5 text-primary-foreground">
-            <Icon icon={Award} size="md" />
+            {result?.brand?.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={result.brand.logo} alt="" className="h-6 w-6 object-contain" />
+            ) : (
+              <Icon icon={Award} size="md" />
+            )}
           </span>
           <div>
             <h1 className="text-xl font-semibold text-foreground">Verify certificate</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Confirm an NCDC conference attendance certificate is genuine. Scan the QR code on
-              the PDF or enter the certificate number below.
+              Confirm a conference attendance certificate is genuine. Scan the QR code on the PDF
+              or enter the certificate number below.
             </p>
           </div>
         </div>
@@ -140,6 +147,17 @@ export function CertificateVerify({ initialToken = null }) {
                   </dt>
                   <dd className="mt-0.5 font-medium text-foreground">
                     {result.certificate.recipientName}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase text-muted-foreground">
+                    Organised by
+                  </dt>
+                  <dd className="mt-0.5 text-foreground">
+                    {result.certificate.organiserName || result.brand?.name || "—"}
+                    {result.certificate.organiserShortName
+                      ? ` (${result.certificate.organiserShortName})`
+                      : ""}
                   </dd>
                 </div>
                 <div>

@@ -39,8 +39,7 @@ export function LoginForm() {
         (typeof searchParams.get("redirect") === "string" && searchParams.get("redirect")) ||
         data.redirect ||
         "/dashboard";
-      router.push(redirect);
-      router.refresh();
+      window.location.assign(redirect.startsWith("/") ? redirect : "/dashboard");
     } catch {
       setError("Network error. Please try again.");
     } finally {

@@ -1,6 +1,6 @@
 import { getAppUrl } from "@/lib/email/config";
 
-const brand = {
+const palette = {
   primary: "#1a5f4a",
   primaryLight: "#e8f5f0",
   text: "#1a1a1a",
@@ -8,11 +8,21 @@ const brand = {
 };
 
 /**
- * @param {{ title: string, preheader?: string, bodyHtml: string, cta?: { label: string, href: string } }} opts
+ * @param {{
+ *   title: string,
+ *   preheader?: string,
+ *   bodyHtml: string,
+ *   cta?: { label: string, href: string },
+ *   brand?: { name?: string, shortName?: string, logoUrl?: string, footerLine?: string } | null,
+ * }} opts
  */
-export function wrapEmailTemplate({ title, preheader, bodyHtml, cta }) {
+export function wrapEmailTemplate({ title, preheader, bodyHtml, cta, brand: orgBrand }) {
   const appUrl = getAppUrl();
-  const logoUrl = `${appUrl}/assets/logo.png`;
+  const logoUrl = orgBrand?.logoUrl || `${appUrl}/assets/logo.png`;
+  const logoAlt = orgBrand?.name || "Conference";
+  const footerLine =
+    orgBrand?.footerLine ||
+    "National Curriculum Development Centre (NCDC) · Conference Platform";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -21,32 +31,33 @@ export function wrapEmailTemplate({ title, preheader, bodyHtml, cta }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title}</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f6f5;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:${brand.text};">
+<body style="margin:0;padding:0;background:#f4f6f5;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:${palette.text};">
   ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;">${preheader}</div>` : ""}
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f5;padding:32px 16px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
           <tr>
-            <td style="background:${brand.primary};padding:24px 28px;">
-              <img src="${logoUrl}" alt="NCDC" width="120" style="display:block;border-radius:6px;background:#fff;padding:4px;" />
-              <h1 style="margin:16px 0 0;font-size:20px;font-weight:600;color:#ffffff;">${title}</h1>
+            <td style="background:${palette.primary};padding:24px 28px;">
+              <img src="${logoUrl}" alt="${logoAlt}" width="120" style="display:block;border-radius:6px;background:#fff;padding:4px;max-height:64px;width:auto;" />
+              ${orgBrand?.name ? `<p style="margin:10px 0 0;font-size:13px;color:#ffffff;opacity:0.95;">${orgBrand.name}${orgBrand.shortName ? ` · ${orgBrand.shortName}` : ""}</p>` : ""}
+              <h1 style="margin:12px 0 0;font-size:20px;font-weight:600;color:#ffffff;">${title}</h1>
             </td>
           </tr>
           <tr>
-            <td style="padding:28px;font-size:15px;line-height:1.6;color:${brand.text};">
+            <td style="padding:28px;font-size:15px;line-height:1.6;color:${palette.text};">
               ${bodyHtml}
               ${
                 cta
-                  ? `<p style="margin:28px 0 0;"><a href="${cta.href}" style="display:inline-block;background:${brand.primary};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">${cta.label}</a></p>`
+                  ? `<p style="margin:28px 0 0;"><a href="${cta.href}" style="display:inline-block;background:${palette.primary};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">${cta.label}</a></p>`
                   : ""
               }
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 28px;background:${brand.primaryLight};font-size:12px;color:${brand.muted};border-top:1px solid #e5e7eb;">
-              National Curriculum Development Centre (NCDC) · Conference Platform<br />
-              <a href="${appUrl}" style="color:${brand.primary};">${appUrl}</a>
+            <td style="padding:20px 28px;background:${palette.primaryLight};font-size:12px;color:${palette.muted};border-top:1px solid #e5e7eb;">
+              ${footerLine}<br />
+              <a href="${appUrl}" style="color:${palette.primary};">${appUrl}</a>
             </td>
           </tr>
         </table>
@@ -57,13 +68,15 @@ export function wrapEmailTemplate({ title, preheader, bodyHtml, cta }) {
 </html>`;
 }
 
-export function registrationWelcomeEmail({ name, email, password, conferenceTitle }) {
+export function registrationWelcomeEmail({ name, email, password, conferenceTitle, brand }) {
   const appUrl = getAppUrl();
   return {
-    subject: `Your NCDC account — ${conferenceTitle}`,
+    subject: `Your account — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Registration received",
       preheader: `Sign in with your new account for ${conferenceTitle}`,
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Thank you for registering for <strong>${conferenceTitle}</strong>.</p>
@@ -79,12 +92,14 @@ export function registrationWelcomeEmail({ name, email, password, conferenceTitl
   };
 }
 
-export function registrationReceivedEmail({ name, conferenceTitle }) {
+export function registrationReceivedEmail({ name, conferenceTitle, brand }) {
   const appUrl = getAppUrl();
   return {
     subject: `Application received — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Registration received",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Thank you for registering for <strong>${conferenceTitle}</strong>.</p>
@@ -95,12 +110,14 @@ export function registrationReceivedEmail({ name, conferenceTitle }) {
   };
 }
 
-export function registrationExistingAccountEmail({ name, conferenceTitle }) {
+export function registrationExistingAccountEmail({ name, conferenceTitle, brand }) {
   const appUrl = getAppUrl();
   return {
     subject: `Application received — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Conference application submitted",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>We received your application for <strong>${conferenceTitle}</strong> (pending approval).</p>
@@ -111,15 +128,17 @@ export function registrationExistingAccountEmail({ name, conferenceTitle }) {
   };
 }
 
-export function registrationApprovedEmail({ name, conferenceTitle, notes, conferenceSlug }) {
+export function registrationApprovedEmail({ name, conferenceTitle, notes, conferenceSlug, brand }) {
   const appUrl = getAppUrl();
   const notesBlock = notes
-    ? `<p style="margin-top:16px;padding:12px 16px;background:#e8f5f0;border-left:4px solid ${brand.primary};"><strong>Note from the organisers:</strong><br/>${notes}</p>`
+    ? `<p style="margin-top:16px;padding:12px 16px;background:#e8f5f0;border-left:4px solid ${palette.primary};"><strong>Note from the organisers:</strong><br/>${notes}</p>`
     : "";
   return {
     subject: `Approved — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Registration approved",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Your registration for <strong>${conferenceTitle}</strong> has been <strong>approved</strong>.</p>
@@ -131,12 +150,14 @@ export function registrationApprovedEmail({ name, conferenceTitle, notes, confer
   };
 }
 
-export function registrationRevisionEmail({ name, conferenceTitle, improvementRequest, notes }) {
+export function registrationRevisionEmail({ name, conferenceTitle, improvementRequest, notes, brand }) {
   const appUrl = getAppUrl();
   return {
     subject: `Action required — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Please update your registration",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Your registration for <strong>${conferenceTitle}</strong> needs attention before it can be approved.</p>
@@ -193,12 +214,15 @@ export function paperRevisionEmail({
   paperTitle,
   improvementRequest,
   notes,
+  brand,
 }) {
   const appUrl = getAppUrl();
   return {
     subject: `Paper revision requested — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Please revise your paper",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Your paper <strong>${paperTitle}</strong> for <strong>${conferenceTitle}</strong> needs revisions before it can be approved.</p>
@@ -211,20 +235,22 @@ export function paperRevisionEmail({
   };
 }
 
-export function paperApprovedEmail({ name, conferenceTitle, paperTitle, notes, isFinal }) {
+export function paperApprovedEmail({ name, conferenceTitle, paperTitle, notes, isFinal, brand }) {
   const appUrl = getAppUrl();
   const finalNote = isFinal
     ? "<p>This approval is <strong>final</strong> for this submission.</p>"
     : "";
   return {
     subject: `Paper approved — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Paper approved",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Your paper <strong>${paperTitle}</strong> for <strong>${conferenceTitle}</strong> has been <strong>approved</strong>.</p>
         ${finalNote}
-        ${notes ? `<p style="margin-top:16px;padding:12px 16px;background:#e8f5f0;border-left:4px solid ${brand.primary};"><strong>Comment:</strong><br/>${notes}</p>` : ""}
+        ${notes ? `<p style="margin-top:16px;padding:12px 16px;background:#e8f5f0;border-left:4px solid ${palette.primary};"><strong>Comment:</strong><br/>${notes}</p>` : ""}
       `,
       cta: { label: "View my papers", href: `${appUrl}/dashboard/my-papers` },
     }),
@@ -236,13 +262,16 @@ export function certificateIssuedEmail({
   conferenceTitle,
   certificateNumber,
   verifyUrl,
+  brand,
 }) {
   const appUrl = getAppUrl();
   return {
     subject: `Your certificate of attendance — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "Certificate of attendance",
       preheader: `Certificate ${certificateNumber} for ${conferenceTitle}`,
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>Congratulations. Your <strong>Certificate of Attendance</strong> for <strong>${conferenceTitle}</strong> is attached to this email.</p>
@@ -257,12 +286,14 @@ export function certificateIssuedEmail({
   };
 }
 
-export function paperReviewerAssignedEmail({ name, conferenceTitle, paperTitle }) {
+export function paperReviewerAssignedEmail({ name, conferenceTitle, paperTitle, brand }) {
   const appUrl = getAppUrl();
   return {
     subject: `Paper assigned for review — ${conferenceTitle}`,
+    fromName: brand?.name,
     html: wrapEmailTemplate({
       title: "New paper to review",
+      brand,
       bodyHtml: `
         <p>Hello ${name},</p>
         <p>You have been assigned to review <strong>${paperTitle}</strong> for <strong>${conferenceTitle}</strong>.</p>

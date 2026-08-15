@@ -132,6 +132,7 @@ model Conference {
   description          String?                   @db.Text
   organiserName        String?                   @db.VarChar(200)
   organiserShortName   String?                   @db.VarChar(16)
+  organiserLogo        String?
   theme                String?                   @db.Text
   subThemes            Json?
   startDate            DateTime?

@@ -6,13 +6,14 @@ import { Award, Download, Mail } from "lucide-react";
 import { ConferenceImage } from "@/components/ConferenceImage";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/lib/cn";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export function CertificatesList() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busySlug, setBusySlug] = useState(null);
+  const [confirmSlug, setConfirmSlug] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +36,7 @@ export function CertificatesList() {
   }, [load]);
 
   async function downloadCertificate(slug) {
+    setConfirmSlug(null);
     setBusySlug(slug);
     try {
       const res = await fetch(`/api/me/certificates/${slug}/download`);
@@ -93,7 +95,10 @@ export function CertificatesList() {
     );
   }
 
+  const confirmRow = items.find((row) => row.conference.slug === confirmSlug);
+
   return (
+    <>
     <ul className="mt-8 grid gap-4 sm:grid-cols-2">
       {items.map((row) => {
         const busy = busySlug === row.conference.slug;
@@ -168,7 +173,7 @@ export function CertificatesList() {
                     variant={canAct ? "primary" : "outline"}
                     size="sm"
                     disabled={!canAct || busy}
-                    onClick={() => downloadCertificate(row.conference.slug)}
+                    onClick={() => setConfirmSlug(row.conference.slug)}
                   >
                     <Icon icon={Download} size="sm" />
                     {busy ? "Preparing certificate…" : "Download PDF"}
@@ -205,5 +210,16 @@ export function CertificatesList() {
         );
       })}
     </ul>
+    <ConfirmModal
+      open={Boolean(confirmSlug)}
+      onClose={() => setConfirmSlug(null)}
+      onConfirm={() => confirmSlug && downloadCertificate(confirmSlug)}
+      title="Confirm the name on your certificate"
+      message={`This PDF will be issued to:\n\n${confirmRow?.recipientName || "your profile name"}\n\nIf this is not correct, update your profile (or ask the organisers) before downloading. Repeat downloads are fast once the name is right.`}
+      confirmLabel="Download PDF"
+      cancelLabel="Go back"
+      loading={Boolean(busySlug)}
+    />
+    </>
   );
 }

@@ -1,7 +1,10 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
-import { brandAssets } from "@/lib/assets";
+import { brandAssets, isRuntimeUploadSrc } from "@/lib/assets";
+import { useOrganiserBrand } from "@/components/layout/OrganiserBrandProvider";
 
 /**
  * @param {object} props
@@ -10,6 +13,10 @@ import { brandAssets } from "@/lib/assets";
  * @param {boolean} [props.linkToHome]
  */
 export function Logo({ size = "md", showText = true, linkToHome = true, className }) {
+  const { brand } = useOrganiserBrand();
+  const logoSrc = brand?.logo || brandAssets.logo;
+  const label = brand?.name || "Conference Management";
+
   const sizes = {
     sm: { img: 32, text: "text-sm" },
     md: { img: 40, text: "text-sm" },
@@ -21,19 +28,23 @@ export function Logo({ size = "md", showText = true, linkToHome = true, classNam
   const content = (
     <span className={cn("flex shrink-0 items-center gap-3", className)}>
       <Image
-        src={brandAssets.logo}
-        alt="Conference Management"
+        src={logoSrc}
+        alt={label}
         width={img * 2}
         height={img}
         className="h-8 w-auto object-contain sm:h-10"
         style={{ width: "auto", height: "auto", maxHeight: size === "lg" ? "2.5rem" : "2rem" }}
         priority={size !== "sm"}
+        unoptimized={isRuntimeUploadSrc(logoSrc)}
       />
       {showText ? (
         <span className="hidden sm:block">
-          <span className={cn("block font-semibold text-foreground", text)}>
-            Conference Management
-          </span>
+          <span className={cn("block font-semibold text-foreground", text)}>{label}</span>
+          {brand?.shortName ? (
+            <span className="block text-[11px] font-medium text-muted-foreground">
+              {brand.shortName}
+            </span>
+          ) : null}
         </span>
       ) : null}
     </span>

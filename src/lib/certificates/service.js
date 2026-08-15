@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { findAttendanceMarks } from "@/lib/attendance/db";
 import { computeAttendanceStats } from "@/lib/attendance/stats";
 import { normalizeConferenceDays } from "@/lib/attendance/utils";
+import { emailBrandFromConference } from "@/lib/conferences/brand";
 import { mapConferenceForUi } from "@/lib/conferences/service";
 import { getProfileFromUser } from "@/lib/users/profile";
 import { sendEmail } from "@/lib/email/mailer";
@@ -19,7 +20,7 @@ import {
   normalizeCertificateNumberInput,
 } from "@/lib/certificates/number";
 import { buildCertificateVerifyUrl, renderCertificatePdf } from "@/lib/certificates/pdf";
-import { readCachedCertificatePdf, writeCachedCertificatePdf } from "@/lib/certificates/pdf-cache";
+import { readCachedCertificatePdf, writeCachedCertificatePdf, deleteCachedCertificatePdf } from "@/lib/certificates/pdf-cache";
 import { withCertificatePdfSlot } from "@/lib/certificates/render-queue";
 import { getCertificateEmailCooldown } from "@/lib/certificates/email-cooldown";
 
@@ -107,6 +108,13 @@ export async function getCertificateSummaries(userId) {
 
   const certByConference = new Map(existingCerts.map((c) => [c.conferenceId, c]));
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, profileData: true },
+  });
+  const recipientName =
+    getProfileFromUser(user).fullName || user?.name || user?.email || "";
+
   return registrations.map((reg) => {
     const days = normalizeConferenceDays(reg.conference.conferenceDays);
     const tz = reg.conference.timezone || "Africa/Nairobi";
@@ -138,6 +146,7 @@ export async function getCertificateSummaries(userId) {
       stats,
       eligible,
       conferenceEnded,
+      recipientName,
       canEmail: Boolean(eligible && !cooldown.blocked),
       nextEmailAt: cooldown.retryAt ? cooldown.retryAt.toISOString() : null,
       emailCooldownMessage: cooldown.message,
@@ -147,6 +156,7 @@ export async function getCertificateSummaries(userId) {
             certificateNumber: cert.certificateNumber,
             issuedAt: cert.issuedAt,
             emailedAt: cert.emailedAt,
+            recipientName: cert.recipientName,
           }
         : null,
       message,
@@ -226,6 +236,13 @@ export async function issueCertificateForUser(userId, slug, opts = {}) {
       ctx.recipientName,
       ctx.stats,
     );
+  } else if (cert.recipientName !== ctx.recipientName) {
+    cert = await prisma.conferenceCertificate.update({
+      where: { id: cert.id },
+      data: { recipientName: ctx.recipientName },
+      include: { conference: true },
+    });
+    await deleteCachedCertificatePdf(cert.id);
   }
 
   const shouldEmail = Boolean(opts.sendEmail);
@@ -259,6 +276,7 @@ async function sendCertificateEmail(cert, toEmail) {
     conferenceTitle: mapped.title,
     certificateNumber: cert.certificateNumber,
     verifyUrl,
+    brand: emailBrandFromConference(mapped),
   });
 
   const result = await sendEmail({
@@ -302,6 +320,9 @@ async function buildCertificatePdfBuffer(cert) {
       certificateNumber: cert.certificateNumber,
       issuedAt: cert.issuedAt,
       verifyUrl,
+      organiserName: mapped.organiserName,
+      organiserShortName: mapped.organiserShortName,
+      organiserLogo: mapped.organiserLogo,
     }),
   );
 
@@ -374,6 +395,36 @@ export async function emailCertificateToUser(userId, slug) {
 }
 
 /**
+ * When a person's name is corrected, drop cached PDFs so the next download reprints.
+ * @param {string} userId
+ */
+export async function invalidateCertificatePdfsForUser(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, profileData: true },
+  });
+  if (!user) return;
+
+  const recipientName = getProfileFromUser(user).fullName || user.name || user.email;
+  const certs = await prisma.conferenceCertificate.findMany({
+    where: { userId },
+    select: { id: true, recipientName: true },
+  });
+
+  await Promise.all(
+    certs.map(async (cert) => {
+      if (cert.recipientName !== recipientName) {
+        await prisma.conferenceCertificate.update({
+          where: { id: cert.id },
+          data: { recipientName },
+        });
+      }
+      await deleteCachedCertificatePdf(cert.id);
+    }),
+  );
+}
+
+/**
  * @param {string} rawNumber
  */
 export async function verifyCertificateByNumber(rawNumber) {
@@ -413,6 +464,14 @@ export async function verifyCertificateByNumber(rawNumber) {
       daysAttended: cert.daysAttended,
       totalDays: cert.totalDays,
       issuedAt: cert.issuedAt,
+      organiserName: mapped.organiserName || null,
+      organiserShortName: mapped.organiserShortName || null,
+      organiserLogo: mapped.organiserLogo || null,
+    },
+    brand: {
+      name: mapped.organiserName || mapped.title,
+      shortName: mapped.organiserShortName || "",
+      logo: mapped.organiserLogo || "",
     },
   };
 }

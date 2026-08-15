@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SessionProvider } from "@/components/auth/SessionProvider";
+import { OrganiserBrandProvider } from "@/components/layout/OrganiserBrandProvider";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import "./globals.css";
 
@@ -28,10 +29,12 @@ export default function RootLayout({ children }) {
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col font-sans" suppressHydrationWarning>
-        <SessionProvider>
-          <SiteChrome>{children}</SiteChrome>
-          <ToastProvider />
-        </SessionProvider>
+        <OrganiserBrandProvider>
+          <SessionProvider>
+            <SiteChrome>{children}</SiteChrome>
+            <ToastProvider />
+          </SessionProvider>
+        </OrganiserBrandProvider>
       </body>
     </html>
   );

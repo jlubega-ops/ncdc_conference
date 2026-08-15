@@ -40,6 +40,25 @@ export function ConferenceDetailHero({ conference, compact = false }) {
           <div className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground">
             {statusLabel}
           </div>
+          {conference.organiserLogo || conference.organiserName ? (
+            <div className="mt-2 flex items-center gap-2">
+              {conference.organiserLogo ? (
+                <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md border border-white/30 bg-white/90">
+                  <ConferenceImage
+                    src={conference.organiserLogo}
+                    alt={conference.organiserName || "Organiser"}
+                    objectFit="contain"
+                  />
+                </span>
+              ) : null}
+              {conference.organiserName ? (
+                <p className="text-xs font-medium text-white/90 sm:text-sm">
+                  {conference.organiserName}
+                  {conference.organiserShortName ? ` · ${conference.organiserShortName}` : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <h1
             className={cn(
               "mt-1.5 max-w-3xl font-bold text-white",

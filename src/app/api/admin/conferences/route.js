@@ -92,6 +92,7 @@ function buildConferencePayload(input, userId) {
     description: (input.description ?? "").trim() || null,
     organiserName,
     organiserShortName,
+    organiserLogo: (input.organiserLogo ?? "").trim() || null,
     theme: (input.theme ?? "").trim() || null,
     subThemes: Array.isArray(input.subThemes) ? input.subThemes.filter(Boolean) : [],
     startDate,

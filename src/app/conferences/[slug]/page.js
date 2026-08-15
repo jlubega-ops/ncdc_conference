@@ -9,6 +9,11 @@ import { getUserConferenceRegistration } from "@/lib/registration/access";
 import { isInviteOnlyConference } from "@/lib/conferences/service";
 import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
 import { getMemberContentAvailability } from "@/lib/conference-content/service";
+import {
+  conferenceMetadataIcons,
+  organiserBrandFromConference,
+} from "@/lib/conferences/brand";
+import { OrganiserBrandSetter } from "@/components/layout/OrganiserBrandProvider";
 
 const AUTH_REQUIRED_TABS = new Set([
   "attendance",
@@ -38,8 +43,9 @@ export async function generateMetadata({ params }) {
     return { title: "Conference | Conference Management", robots: { index: false, follow: false } };
   }
   return {
-    title: `${conference.title} | Conference Management`,
+    title: `${conference.title} | ${conference.organiserName || "Conference Management"}`,
     description: conference.shortDescription,
+    icons: conferenceMetadataIcons(conference),
   };
 }
 
@@ -128,6 +134,7 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
 
   return (
     <div className="bg-background">
+      <OrganiserBrandSetter brand={organiserBrandFromConference(conference)} />
       <ConferenceDetailHero conference={conference} compact={isConfirmedAttendee} />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

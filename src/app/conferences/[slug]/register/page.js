@@ -10,6 +10,11 @@ import {
   isRegistrableConference,
 } from "@/lib/conferences/registrable";
 import { formatFullDate } from "@/lib/conferences/utils";
+import {
+  conferenceMetadataIcons,
+  organiserBrandFromConference,
+} from "@/lib/conferences/brand";
+import { OrganiserBrandSetter } from "@/components/layout/OrganiserBrandProvider";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -18,8 +23,9 @@ export async function generateMetadata({ params }) {
     return { title: "Conference Not Found" };
   }
   return {
-    title: `Register — ${conference.title} | Conference Management`,
+    title: `Register — ${conference.title} | ${conference.organiserName || "Conference Management"}`,
     description: `Register for ${conference.title}.`,
+    icons: conferenceMetadataIcons(conference),
   };
 }
 
@@ -49,8 +55,10 @@ export default async function ConferenceRegisterPage({ params }) {
   }
 
   return (
-    <PublicFormLayout
-      eyebrow="Conference registration"
+    <>
+      <OrganiserBrandSetter brand={organiserBrandFromConference(conference)} />
+      <PublicFormLayout
+        eyebrow="Conference registration"
       title={conference.title}
       subtitle={subtitle}
       conference={conference}
@@ -84,6 +92,7 @@ export default async function ConferenceRegisterPage({ params }) {
           </Button>
         </div>
       )}
-    </PublicFormLayout>
+      </PublicFormLayout>
+    </>
   );
 }

@@ -13,6 +13,8 @@ import {
   mergeRegistrationWithProfile,
 } from "@/lib/users/profile";
 import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
+import { emailBrandFromConference } from "@/lib/conferences/brand";
+import { invalidateCertificatePdfsForUser } from "@/lib/certificates/service";
 
 /**
  * @param {string} conferenceId
@@ -195,10 +197,12 @@ export async function registerUserForConference({
       ? registrationReceivedEmail({
           name: values.fullName || email,
           conferenceTitle: conference.title,
+          brand: emailBrandFromConference(conference),
         })
       : registrationExistingAccountEmail({
           name: values.fullName || user.name || email,
           conferenceTitle: conference.title,
+          brand: emailBrandFromConference(conference),
         })),
   });
 
@@ -299,6 +303,7 @@ export async function reviewRegistration({
         conferenceTitle: registration.conference.title,
         improvementRequest: improvementRequest.trim(),
         notes: adminNotes,
+        brand: emailBrandFromConference(registration.conference),
       }),
     });
 
@@ -412,6 +417,8 @@ export async function updateRegistrationAttendeeByAdmin({
       data: { formData },
     }),
   ]);
+
+  await invalidateCertificatePdfsForUser(registration.userId).catch(() => {});
 
   let accessKeyEmailed = false;
   let accessKeyIssueWarning = null;

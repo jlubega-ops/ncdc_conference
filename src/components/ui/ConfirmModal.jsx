@@ -35,7 +35,7 @@ export function ConfirmModal({
       size="md"
       zIndex={100}
     >
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <p className="whitespace-pre-line text-sm text-muted-foreground">{message}</p>
       <div className="mt-6 flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onClose} disabled={loading}>
           {cancelLabel}

@@ -3,8 +3,8 @@ import { hashPassword } from "@/lib/auth/password";
 import { generateTemporaryPassword } from "@/lib/auth/credentials";
 import { sendEmail } from "@/lib/email/mailer";
 import { accountWelcomeEmail } from "@/lib/email/templates";
-import { mapUserForAdminList } from "@/lib/users/profile";
-import { getProfileFromUser } from "@/lib/users/profile";
+import { mapUserForAdminList, getProfileFromUser } from "@/lib/users/profile";
+import { invalidateCertificatePdfsForUser } from "@/lib/certificates/service";
 import {
   validateAdminCreateUser,
   validateAdminUpdateUser,
@@ -205,6 +205,8 @@ export async function updateUserByAdmin(userId, data) {
     });
   });
 
+  await invalidateCertificatePdfsForUser(userId).catch(() => {});
+
   return {
     user: mapUserForAdminList(user),
     message: "User updated.",
@@ -274,6 +276,8 @@ export async function updateUserProfile(userId, data) {
       profileData: values.profile,
     },
   });
+
+  await invalidateCertificatePdfsForUser(userId).catch(() => {});
 
   return { profile: getProfileFromUser(user) };
 }

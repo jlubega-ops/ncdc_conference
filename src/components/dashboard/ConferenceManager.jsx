@@ -94,6 +94,7 @@ function emptyConference() {
     description: "",
     organiserName: "",
     organiserShortName: "",
+    organiserLogo: "",
     theme: "",
     subThemes: [],
     startDate: "",
@@ -304,8 +305,6 @@ function fieldBelongsToSection(key, sectionId) {
       "description",
       "theme",
       "category",
-      "organiserName",
-      "organiserShortName",
     ].includes(key);
   }
   if (sectionId === "schedule") {
@@ -358,7 +357,14 @@ function fieldBelongsToSection(key, sectionId) {
       key.startsWith("paidContentVisibility.")
     );
   }
-  if (sectionId === "contacts") return key.startsWith("contacts.");
+  if (sectionId === "contacts") {
+    return (
+      key.startsWith("contacts.") ||
+      key === "organiserName" ||
+      key === "organiserShortName" ||
+      key === "organiserLogo"
+    );
+  }
   return false;
 }
 
@@ -423,6 +429,7 @@ export function ConferenceManager({ conferences }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
+  const [uploadingOrganiserLogo, setUploadingOrganiserLogo] = useState(false);
   const [programmeDrafts, setProgrammeDrafts] = useState({});
   const [speakerDraft, setSpeakerDraft] = useState(emptySpeakerDraft);
   const [editingSpeakerId, setEditingSpeakerId] = useState(null);
@@ -1254,12 +1261,56 @@ export function ConferenceManager({ conferences }) {
         return next;
       });
       toast.success(data.message || "Card image uploaded successfully.");
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Upload failed.";
-      setError(message);
-      toast.error(message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not upload image.");
     } finally {
       setUploadingCardImage(false);
+    }
+  }
+
+  async function onOrganiserLogoUpload(file) {
+    if (!file) return;
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        organiserLogo: "Only JPG, PNG, and WEBP image formats are allowed.",
+      }));
+      setActiveSection("contacts");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        organiserLogo: "Image exceeds 5MB limit.",
+      }));
+      setActiveSection("contacts");
+      return;
+    }
+
+    setUploadingOrganiserLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/admin/uploads/organiser-logo", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not upload logo.");
+      }
+      onField("organiserLogo", data.url);
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.organiserLogo;
+        return next;
+      });
+      toast.success(data.message || "Organisation logo uploaded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not upload logo.");
+    } finally {
+      setUploadingOrganiserLogo(false);
     }
   }
 
@@ -1618,29 +1669,6 @@ export function ConferenceManager({ conferences }) {
                       value={editing.slug}
                       onChange={(e) => onField("slug", e.target.value)}
                       hint="Optional. Auto-generated from title if blank."
-                    />
-                    <Input
-                      label="Organisation / organiser name"
-                      value={editing.organiserName || ""}
-                      onChange={(e) => onField("organiserName", e.target.value)}
-                      error={fieldErrors.organiserName}
-                      hint="Shown on the conference page and certificates."
-                      requiredMark
-                    />
-                    <Input
-                      label="Organisation short name"
-                      value={editing.organiserShortName || ""}
-                      onChange={(e) => {
-                        const cleaned = e.target.value
-                          .toUpperCase()
-                          .replace(/[^A-Z0-9]/g, "")
-                          .slice(0, 12);
-                        onField("organiserShortName", cleaned);
-                      }}
-                      error={fieldErrors.organiserShortName}
-                      hint="Used in access codes, e.g. NCDC/CONF2027/…. Letters and numbers only."
-                      className="font-mono uppercase"
-                      requiredMark
                     />
                     <div className="sm:col-span-2">
                       <FieldLabel required>Description</FieldLabel>
@@ -2962,7 +2990,6 @@ export function ConferenceManager({ conferences }) {
                                   : null,
                               })
                             }
-                            hint="Attendees can download from this date and time. If empty, downloads open from the last conference day. PDFs are generated on first download and reused, so people are not blocked."
                           />
                         </div>
                       ) : null}
@@ -3619,6 +3646,70 @@ export function ConferenceManager({ conferences }) {
                 {activeSection === "contacts" ? (
                   <div className="space-y-4">
                     <SectionErrorAlert messages={getSectionErrorMessages(fieldErrors, "contacts")} />
+                    <p className="text-xs text-muted-foreground">
+                      Organisation branding appears on the conference page, favicon, emails, and
+                      certificates. Contact details are shown to attendees for enquiries.
+                    </p>
+
+                    <div className="rounded-lg border border-border bg-background p-4 space-y-4">
+                      <h3 className="text-sm font-semibold text-foreground">Organisation</h3>
+                      <Input
+                        label="Organisation / organiser name"
+                        value={editing.organiserName || ""}
+                        onChange={(e) => onField("organiserName", e.target.value)}
+                        error={fieldErrors.organiserName}
+                        hint="Shown in the header, emails, and certificates."
+                        requiredMark
+                      />
+                      <Input
+                        label="Organisation short name"
+                        value={editing.organiserShortName || ""}
+                        onChange={(e) => {
+                          const cleaned = e.target.value
+                            .toUpperCase()
+                            .replace(/[^A-Z0-9]/g, "")
+                            .slice(0, 12);
+                          onField("organiserShortName", cleaned);
+                        }}
+                        error={fieldErrors.organiserShortName}
+                        hint="Used in access codes and branding, e.g. NCDC. Letters and numbers only."
+                        className="font-mono uppercase"
+                        requiredMark
+                      />
+                      <div>
+                        <FieldLabel>Organisation logo</FieldLabel>
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Square PNG or JPG works best. Used as the conference favicon, email header,
+                          and certificate logo.
+                        </p>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={uploadingOrganiserLogo}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (file) void onOrganiserLogoUpload(file);
+                          }}
+                        />
+                        {uploadingOrganiserLogo ? (
+                          <p className="mt-1.5 text-xs text-muted-foreground">Uploading logo…</p>
+                        ) : null}
+                        {fieldErrors.organiserLogo ? (
+                          <p className="mt-1.5 text-xs text-error">{fieldErrors.organiserLogo}</p>
+                        ) : null}
+                        {editing.organiserLogo ? (
+                          <div className="relative mt-3 h-20 w-20 overflow-hidden rounded-md border border-border bg-surface">
+                            <ConferenceImage
+                              src={editing.organiserLogo}
+                              alt="Organisation logo"
+                              objectFit="contain"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
                     <p className="text-xs text-muted-foreground">
                       Conference contact information for enquiries and support.
                     </p>

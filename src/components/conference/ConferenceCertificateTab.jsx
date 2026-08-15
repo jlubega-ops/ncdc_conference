@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 import { Award, Download, Mail } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/lib/cn";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 /**
  * Embedded certificate view for a conference's Certificate tab (no dashboard links).
@@ -16,6 +16,7 @@ export function ConferenceCertificateTab({ slug }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,6 +39,7 @@ export function ConferenceCertificateTab({ slug }) {
   }, [load]);
 
   async function downloadCertificate() {
+    setConfirmOpen(false);
     setBusy(true);
     try {
       const res = await fetch(`/api/me/certificates/${slug}/download`);
@@ -155,7 +157,7 @@ export function ConferenceCertificateTab({ slug }) {
           variant={canAct ? "primary" : "outline"}
           size="sm"
           disabled={!canAct || busy}
-          onClick={downloadCertificate}
+          onClick={() => setConfirmOpen(true)}
         >
           <Icon icon={Download} size="sm" />
           {busy ? "Preparing certificate…" : "Download PDF"}
@@ -193,6 +195,17 @@ export function ConferenceCertificateTab({ slug }) {
           of Gmail sending limits.
         </p>
       ) : null}
+
+      <ConfirmModal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={downloadCertificate}
+        title="Confirm the name on your certificate"
+        message={`This PDF will be issued to:\n\n${row.recipientName || "your profile name"}\n\nIf this is not correct, update your profile (or ask the organisers) before downloading. Repeat downloads are fast once the name is right.`}
+        confirmLabel="Download PDF"
+        cancelLabel="Go back"
+        loading={busy}
+      />
     </div>
   );
 }

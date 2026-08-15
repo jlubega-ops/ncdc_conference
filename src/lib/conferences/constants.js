@@ -50,7 +50,7 @@ export const FORM_SECTIONS = [
   { id: "gifts", label: "Awards & gifts" },
   { id: "faqs", label: "FAQs" },
   { id: "payments", label: "Payments" },
-  { id: "contacts", label: "Contacts" },
+  { id: "contacts", label: "Organisation & contacts" },
 ];
 
 /** How attendees join this conference. */

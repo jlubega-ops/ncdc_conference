@@ -290,6 +290,9 @@ const styles = StyleSheet.create({
  *   certificateNumber: string;
  *   issuedAt: Date | string;
  *   qrDataUrl: string;
+ *   organiserName?: string | null;
+ *   organiserShortName?: string | null;
+ *   logoSrc?: string;
  * }} props
  */
 export function CertificatePdfDocument({
@@ -303,17 +306,23 @@ export function CertificatePdfDocument({
   certificateNumber,
   issuedAt,
   qrDataUrl,
+  organiserName,
+  organiserShortName,
+  logoSrc,
 }) {
   const issuedLabel = new Date(issuedAt).toLocaleDateString("en-UG", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
+  const orgTitle = String(organiserName || "").trim() || "National Curriculum Development Centre";
+  const orgShort = String(organiserShortName || "").trim() || "NCDC";
+  const logo = logoSrc || LOGO_PATH;
 
   return (
     <Document
       title={`Certificate — ${recipientName}`}
-      author="National Curriculum Development Centre"
+      author={orgTitle}
       subject={conferenceTitle}
     >
       <Page
@@ -324,10 +333,10 @@ export function CertificatePdfDocument({
         <View style={styles.outerFrame}>
           <View style={styles.innerFrame}>
             <View style={styles.header}>
-              <Image src={LOGO_PATH} style={styles.logo} />
+              <Image src={logo} style={styles.logo} />
               <View style={styles.headerTextBlock}>
-                <Text style={styles.orgName}>National Curriculum Development Centre</Text>
-                <Text style={styles.orgSub}>Republic of Uganda · Ministry of Education & Sports</Text>
+                <Text style={styles.orgName}>{orgTitle}</Text>
+                <Text style={styles.orgSub}>{orgShort}</Text>
               </View>
               <View style={styles.headerBadge}>
                 <Text style={styles.headerBadgeText}>OFFICIAL</Text>
@@ -383,7 +392,7 @@ export function CertificatePdfDocument({
 
               <View style={styles.sealBlock}>
                 <View style={styles.seal}>
-                  <Text style={styles.sealText}>NCDC</Text>
+                  <Text style={styles.sealText}>{orgShort.slice(0, 8)}</Text>
                 </View>
                 <Text style={styles.sealSub}>Certified</Text>
               </View>

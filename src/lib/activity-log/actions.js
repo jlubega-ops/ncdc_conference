@@ -37,6 +37,7 @@ export const ACTIVITY_ACTIONS = {
   PRESENTATION_CREATE: "presentation.create",
   PRESENTATION_DELETE: "presentation.delete",
   UPLOAD_CARD_IMAGE: "upload.card_image",
+  UPLOAD_ORGANISER_LOGO: "upload.organiser_logo",
   UPLOAD_SPEAKER_PHOTO: "upload.speaker_photo",
 
   // Registrations & attendees

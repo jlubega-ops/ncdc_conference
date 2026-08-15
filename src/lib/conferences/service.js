@@ -103,6 +103,7 @@ export function mapConferenceForUi(conference) {
     description: conference.description ?? "",
     organiserName: conference.organiserName ?? "",
     organiserShortName: conference.organiserShortName ?? "",
+    organiserLogo: conference.organiserLogo ?? "",
     theme: conference.theme ?? "",
     subThemes,
     dateRange: formatDateRange(startDate, endDate),

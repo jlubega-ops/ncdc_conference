@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useSession } from "@/components/auth/SessionProvider";
@@ -21,7 +21,6 @@ function safeInternalRedirect(value) {
 }
 
 export function AccessKeyLoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { refreshSession } = useSession();
   const [accessKey, setAccessKey] = useState("");
@@ -50,8 +49,7 @@ export function AccessKeyLoginForm() {
         safeInternalRedirect(searchParams.get("redirect")) ||
         safeInternalRedirect(data.redirect) ||
         "/dashboard";
-      router.push(redirect);
-      router.refresh();
+      window.location.assign(redirect);
     } catch {
       setError("Network error. Please try again.");
     } finally {

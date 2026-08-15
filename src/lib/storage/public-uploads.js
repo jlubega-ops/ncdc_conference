@@ -4,6 +4,7 @@ import path from "node:path";
 export const PUBLIC_UPLOAD_CATEGORIES = new Set([
   "speaker-photos",
   "conference-card-images",
+  "organiser-logos",
 ]);
 
 const SAFE_FILENAME = /^[A-Za-z0-9._-]+$/;

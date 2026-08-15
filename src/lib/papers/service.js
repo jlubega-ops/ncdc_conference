@@ -10,6 +10,7 @@ import {
 } from "@/lib/email/templates";
 import { getPaperFileRef, mapPaperForAdmin } from "@/lib/papers/map";
 import { savePrivateUpload } from "@/lib/storage/secure-files";
+import { emailBrandFromConference } from "@/lib/conferences/brand";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
@@ -36,7 +37,16 @@ export async function getPaperSubmissionOrThrow(conferenceId, submissionId) {
     where: { id: submissionId, conferenceId },
     include: {
       user: { select: { id: true, email: true, name: true } },
-      conference: { select: { id: true, slug: true, title: true } },
+      conference: {
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          organiserName: true,
+          organiserShortName: true,
+          organiserLogo: true,
+        },
+      },
       assignedReviewer: { select: { id: true, email: true, name: true } },
     },
   });
@@ -116,6 +126,7 @@ export async function reviewPaperSubmission({
         paperTitle: paper.title,
         notes: reviewNotes?.trim(),
         isFinal: true,
+        brand: emailBrandFromConference(paper.conference),
       }),
     });
   } else if (action === "request_revision") {
@@ -127,6 +138,7 @@ export async function reviewPaperSubmission({
         paperTitle: paper.title,
         improvementRequest: nextImprovement,
         notes: reviewNotes?.trim(),
+        brand: emailBrandFromConference(paper.conference),
       }),
     });
   }
@@ -178,6 +190,7 @@ export async function assignPaperReviewer({
           email: normalizedEmail,
           password: tempPassword,
           conferenceTitle: `${paper.conference.title} (reviewer)`,
+          brand: emailBrandFromConference(paper.conference),
         }),
       });
       await sendEmail({
@@ -186,6 +199,7 @@ export async function assignPaperReviewer({
           name: displayName || normalizedEmail,
           conferenceTitle: paper.conference.title,
           paperTitle: paper.title,
+          brand: emailBrandFromConference(paper.conference),
         }),
       });
     }
@@ -253,6 +267,7 @@ export async function assignPaperReviewer({
         name: reviewer.name || reviewer.email,
         conferenceTitle: paper.conference.title,
         paperTitle: paper.title,
+        brand: emailBrandFromConference(paper.conference),
       }),
     });
   }

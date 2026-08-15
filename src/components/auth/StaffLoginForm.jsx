@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useSession } from "@/components/auth/SessionProvider";
 
 export function StaffLoginForm() {
-  const router = useRouter();
   const { refreshSession } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,8 +28,7 @@ export function StaffLoginForm() {
         return;
       }
       await refreshSession();
-      router.push(data.redirect ?? "/dashboard");
-      router.refresh();
+      window.location.assign(data.redirect ?? "/dashboard");
     } catch {
       setError("Network error. Please try again.");
     } finally {
