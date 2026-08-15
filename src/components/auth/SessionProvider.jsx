@@ -57,6 +57,7 @@ export function SessionProvider({ children, initialSession = null }) {
   const router = useRouter();
   const pathname = usePathname();
   const [session, setSession] = useState(initialSession);
+  const [sessionReady, setSessionReady] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [switchTarget, setSwitchTarget] = useState(null);
   const [, startTransition] = useTransition();
@@ -114,6 +115,22 @@ export function SessionProvider({ children, initialSession = null }) {
     }
     return next;
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await refreshSession();
+      } catch {
+        if (!cancelled) setSession(null);
+      } finally {
+        if (!cancelled) setSessionReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSession]);
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
@@ -269,6 +286,7 @@ export function SessionProvider({ children, initialSession = null }) {
   const value = useMemo(
     () => ({
       session,
+      sessionReady,
       isAuthenticated: Boolean(session),
       refreshSession,
       logout,
@@ -276,7 +294,7 @@ export function SessionProvider({ children, initialSession = null }) {
       switching,
       handleSessionExpired,
     }),
-    [session, refreshSession, logout, switchRole, switching, handleSessionExpired],
+    [session, sessionReady, refreshSession, logout, switchRole, switching, handleSessionExpired],
   );
 
   return (

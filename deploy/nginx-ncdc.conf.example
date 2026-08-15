@@ -1,0 +1,79 @@
+server {
+    server_name conference.mubs.ac.ug;
+    client_max_body_size 12m;
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript image/svg+xml;
+
+    access_log /var/log/nginx/conference_access.log;
+    error_log /var/log/nginx/conference_error.log;
+
+    # Runtime uploads (speaker photos, card images)
+    location /uploads/ {
+        root /var/www/extapps/conference_manager/storage/public;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+        try_files $uri @next;
+    }
+
+    # Brand assets from the repo public folder
+    location /assets/ {
+        root /var/www/extapps/conference_manager/public;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        try_files $uri @next;
+    }
+
+    # Next.js build JS/CSS
+    location /_next/static/ {
+        alias /var/www/extapps/conference_manager/.next/static/;
+        expires 365d;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri @next;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3050;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 90s;
+        add_header Cache-Control "private, no-store";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3050;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location @next {
+        proxy_pass http://127.0.0.1:3050;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/conference.mubs.ac.ug/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/conference.mubs.ac.ug/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+server {
+    if ($host = conference.mubs.ac.ug) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+    listen 80;
+    server_name conference.mubs.ac.ug;
+    return 404; # managed by Certbot
+}

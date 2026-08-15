@@ -96,7 +96,7 @@ export function ConferenceCertificateTab({ slug }) {
     );
   }
 
-  const canAct = row.eligible || Boolean(row.certificate);
+  const canAct = row.eligible;
 
   return (
     <div
@@ -156,13 +156,19 @@ export function ConferenceCertificateTab({ slug }) {
           onClick={downloadCertificate}
         >
           <Icon icon={Download} size="sm" />
-          {busy ? "Please wait…" : "Download PDF"}
+          {busy ? "Preparing certificate…" : "Download PDF"}
         </Button>
         <Button variant="outline" size="sm" disabled={!canAct || busy} onClick={emailCertificate}>
           <Icon icon={Mail} size="sm" />
-          Send to email
+          {busy ? "Working…" : "Send to email"}
         </Button>
       </div>
+      {busy ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          First download can take a few seconds if many people are generating certificates at once.
+          Please keep this page open.
+        </p>
+      ) : null}
 
       {row.certificate?.emailedAt ? (
         <p className="mt-2 text-xs text-muted-foreground">

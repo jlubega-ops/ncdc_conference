@@ -34,10 +34,10 @@ export function isCertificateDownloadOpen(conference, settings, days) {
 }
 
 /**
- * @param {{ overallProgress?: number; remaining?: number; totalDays: number; elapsed?: number; attended?: number }} stats
- * @param {any} conference
+ * Attendance / settings rules only — ignores the download-open clock.
+ * Used to create the certificate record during the event without generating a PDF.
  */
-export function isCertificateEligible(stats, conference) {
+export function meetsCertificateAttendanceRules(stats, conference) {
   const days = normalizeConferenceDays(conference?.conferenceDays);
   const settings = normalizeCertificateSettings(conference?.certificateSettings, {
     totalDays: days.length || stats?.totalDays || 1,
@@ -45,14 +45,28 @@ export function isCertificateEligible(stats, conference) {
 
   if (!settings.allowed) return false;
   if (!stats?.totalDays || stats.totalDays < 1) return false;
-  if (!isCertificateDownloadOpen(conference, settings, days)) return false;
 
   if (settings.basedOnAttendance) {
-    const attended = Number(stats.attended ?? 0);
-    return attended >= settings.minAttendanceDays;
+    return Number(stats.attended ?? 0) >= settings.minAttendanceDays;
   }
 
   return true;
+}
+
+/**
+ * Attendee may download: attendance rules met AND download window is open
+ * (`downloadOpensAt`, or last conference day if that is not set).
+ */
+export function isCertificateEligible(stats, conference) {
+  const days = normalizeConferenceDays(conference?.conferenceDays);
+  const settings = normalizeCertificateSettings(conference?.certificateSettings, {
+    totalDays: days.length || stats?.totalDays || 1,
+  });
+
+  return (
+    meetsCertificateAttendanceRules(stats, conference) &&
+    isCertificateDownloadOpen(conference, settings, days)
+  );
 }
 
 /**

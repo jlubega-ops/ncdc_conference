@@ -2,7 +2,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { ToastProvider } from "@/components/ui/ToastProvider";
-import { getCurrentSession } from "@/lib/auth/session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,25 +14,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const dynamic = "force-dynamic";
-
 export const metadata = {
   title: "Conference Management",
   description:
     "Discover open conferences, register for events, and manage programmes from one place.",
 };
 
-export default async function RootLayout({ children }) {
-  let initialSession = null;
-  try {
-    initialSession = await getCurrentSession();
-  } catch (err) {
-    if (err && typeof err === "object" && err.digest === "DYNAMIC_SERVER_USAGE") {
-      throw err;
-    }
-    initialSession = null;
-  }
-
+export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
@@ -41,7 +28,7 @@ export default async function RootLayout({ children }) {
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col font-sans" suppressHydrationWarning>
-        <SessionProvider initialSession={initialSession}>
+        <SessionProvider>
           <SiteChrome>{children}</SiteChrome>
           <ToastProvider />
         </SessionProvider>

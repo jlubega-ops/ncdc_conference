@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { buildOpenCalls, getPublishedConferences } from "@/lib/conferences/service";
+import { buildOpenCalls, getPublishedConferencesCached } from "@/lib/conferences/service";
 import { formatDeadlineDate } from "@/lib/conferences/utils";
+
+export const revalidate = 60;
 
 export const metadata = {
   title: "Call for Papers | NCDC Conference Platform",
@@ -9,7 +11,7 @@ export const metadata = {
 };
 
 export default async function CallForPapersPage() {
-  const conferences = await getPublishedConferences();
+  const conferences = await getPublishedConferencesCached();
   const calls = buildOpenCalls(conferences);
 
   return (

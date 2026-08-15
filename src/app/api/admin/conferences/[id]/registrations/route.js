@@ -115,6 +115,7 @@ export async function POST(request, { params }) {
       lastName: body.lastName,
       email: body.email,
       comment: body.comment,
+      organisation: body.organisation ?? body.institution,
       forceDuplicate: Boolean(body.forceDuplicate),
     });
 

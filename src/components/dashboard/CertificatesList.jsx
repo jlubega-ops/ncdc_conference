@@ -97,8 +97,7 @@ export function CertificatesList() {
     <ul className="mt-8 grid gap-4 sm:grid-cols-2">
       {items.map((row) => {
         const busy = busySlug === row.conference.slug;
-        const hasCert = Boolean(row.certificate);
-        const canAct = row.eligible || hasCert;
+        const canAct = row.eligible;
 
         return (
           <li
@@ -171,7 +170,7 @@ export function CertificatesList() {
                     onClick={() => downloadCertificate(row.conference.slug)}
                   >
                     <Icon icon={Download} size="sm" />
-                    {busy ? "Please wait…" : "Download PDF"}
+                    {busy ? "Preparing certificate…" : "Download PDF"}
                   </Button>
                   <Button
                     variant="outline"

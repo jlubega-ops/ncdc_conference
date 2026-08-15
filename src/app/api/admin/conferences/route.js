@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireConferenceManager, requireSuperadmin } from "@/lib/auth/guards";
 import { getManagedConferenceIds } from "@/lib/auth/conference-access";
-import { mapConferenceForUi } from "@/lib/conferences/service";
+import { mapConferenceForUi, revalidatePublishedConferenceCache } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
@@ -176,6 +176,7 @@ export async function POST(request) {
         publicationStatus: created.publicationStatus,
       },
     });
+    revalidatePublishedConferenceCache(created.slug);
     return NextResponse.json(
       {
         conference: mapConferenceForUi(created),

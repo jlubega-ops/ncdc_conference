@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
-import { mapConferenceForUi } from "@/lib/conferences/service";
+import { mapConferenceForUi, revalidatePublishedConferenceCache } from "@/lib/conferences/service";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
@@ -156,6 +156,7 @@ export async function PATCH(request, { params }) {
       conferenceId: updated.id,
       metadata: { publicationStatus: updated.publicationStatus, slug: updated.slug },
     });
+    revalidatePublishedConferenceCache(updated.slug);
     return NextResponse.json({
       conference: mapConferenceForUi(updated),
       message:
@@ -223,6 +224,7 @@ export async function DELETE(request, { params }) {
         },
       });
     }
+    revalidatePublishedConferenceCache(result.impact?.conference?.slug);
     return NextResponse.json({
       ok: true,
       message: result.message,

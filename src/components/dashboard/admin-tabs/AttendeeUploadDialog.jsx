@@ -108,7 +108,7 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
         <p className="text-sm text-muted-foreground">
           Download the CSV template, fill in attendees, then attach the file. Required columns:
           email, firstName, lastName. Optional: middleName, gender (M/F), telephone,
-          countryOfOrigin, institution. Rows with errors are highlighted — you can still upload;
+          countryOfOrigin, organisation. Rows with errors are highlighted — you can still upload;
           only rows with a valid email are processed. Access codes are not emailed on upload —
           use Send access codes afterward.
         </p>
@@ -152,7 +152,7 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
                     <th className="px-3 py-2">Line</th>
                     <th className="px-3 py-2">Email</th>
                     <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Institution</th>
+                    <th className="px-3 py-2">Organisation</th>
                     <th className="px-3 py-2">Status</th>
                   </tr>
                 </thead>

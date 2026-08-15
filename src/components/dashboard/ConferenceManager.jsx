@@ -2217,7 +2217,7 @@ export function ConferenceManager({ conferences }) {
                         Invite-only: this conference will not appear on the public conferences page
                         or home search. After saving, upload attendees under Registrations
                         (template: email, firstName, middleName, lastName, gender, telephone,
-                        countryOfOrigin, institution). Each person receives an access code.
+                        countryOfOrigin, organisation). Access codes are not emailed until you send them.
                       </p>
                     ) : null}
                     {editing.registrationMode === "OPEN_NO_REGISTRATION" ? (
@@ -2962,7 +2962,7 @@ export function ConferenceManager({ conferences }) {
                                   : null,
                               })
                             }
-                            hint="Optional. If empty, downloads open from the last conference day."
+                            hint="Attendees can download from this date and time. If empty, downloads open from the last conference day. PDFs are generated on first download and reused, so people are not blocked."
                           />
                         </div>
                       ) : null}

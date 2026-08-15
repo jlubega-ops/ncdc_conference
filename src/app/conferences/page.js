@@ -1,6 +1,8 @@
 import { ConferenceCard } from "@/components/ConferenceCard";
-import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
-import { getPublishedConferences } from "@/lib/conferences/service";
+import { RedirectIfAuthenticatedClient } from "@/components/auth/RedirectIfAuthenticatedClient";
+import { getPublishedConferencesCached } from "@/lib/conferences/service";
+
+export const revalidate = 60;
 
 export const metadata = {
   title: "Conferences | Conference Management",
@@ -8,12 +10,11 @@ export const metadata = {
 };
 
 export default async function ConferencesPage() {
-  await redirectIfAuthenticated();
-
-  const conferences = await getPublishedConferences();
+  const conferences = await getPublishedConferencesCached();
 
   return (
     <div className="bg-background">
+      <RedirectIfAuthenticatedClient />
       <div className="border-b border-border bg-surface">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
           <h1 className="text-3xl font-bold text-foreground">Conferences</h1>

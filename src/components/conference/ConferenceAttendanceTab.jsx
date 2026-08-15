@@ -87,11 +87,6 @@ export function ConferenceAttendanceTab({ slug, conferenceHomeHref }) {
       toast.success("Attendance registered for today.");
       setData(json);
       setDialog("success");
-      try {
-        await fetch(`/api/me/certificates/${slug}/email`, { method: "POST" });
-      } catch {
-        /* ignore */
-      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Check-in failed.");
     } finally {

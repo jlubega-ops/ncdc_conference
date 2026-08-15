@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { buildProfilePayload } from "@/lib/users/profile";
-import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
+import { rememberOrganisation } from "@/lib/organisations/service";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * CSV template header for admin attendee upload.
  * Required: email, firstName, lastName.
- * Optional: middleName, gender, telephone, countryOfOrigin, institution.
+ * Optional: middleName, gender, telephone, countryOfOrigin, organisation.
  */
 export const ATTENDEE_UPLOAD_HEADERS = [
   "email",
@@ -17,7 +17,7 @@ export const ATTENDEE_UPLOAD_HEADERS = [
   "gender",
   "telephone",
   "countryOfOrigin",
-  "institution",
+  "organisation",
 ];
 
 export function getAttendeeUploadTemplateCsv() {
@@ -117,7 +117,11 @@ export function validateAttendeeUploadRows(rows) {
       "country",
       "countryOfOrigin",
     ]);
-    const institution = pickField(row, ["institution", "organization", "organisation"]);
+    const institution = pickField(row, [
+      "organisation",
+      "organization",
+      "institution",
+    ]);
 
     /** @type {string[]} */
     const errors = [];
@@ -198,6 +202,7 @@ export async function confirmAttendeeUpload({ conferenceId, rows, allowErrors = 
         countryOfOrigin: row.countryOfOrigin || "",
         institution: row.institution || "",
       });
+      rememberOrganisation(row.institution);
 
       const formData = {
         ...profile,

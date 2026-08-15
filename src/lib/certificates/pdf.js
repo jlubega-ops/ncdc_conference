@@ -34,9 +34,9 @@ export async function renderCertificatePdf(data) {
   const verifyUrl = buildCertificateVerifyUrl(data.certificateNumber);
 
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
-    errorCorrectionLevel: "H",
-    margin: 2,
-    width: 280,
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 160,
     color: {
       dark: colors.primary.dark,
       light: "#ffffff",

@@ -1,11 +1,10 @@
+import { getActiveConferenceSlug } from "@/lib/auth/dashboard-routes";
+
 /** Links shown to visitors who are not signed in */
 export const publicNavLinks = [
   { label: "Home", href: "/" },
   { label: "About", href: "/about" },
 ];
-
-/** Compact header links when signed in as attendee */
-export const attendeeHeaderNav = [];
 
 /** Compact header links when signed in as staff */
 export const staffHeaderNav = [
@@ -15,13 +14,21 @@ export const staffHeaderNav = [
 const STAFF_ROLES = new Set(["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"]);
 
 /**
- * @param {{ activeRole?: string } | null} session
+ * @param {{ activeRole?: string; activeConferenceId?: string | null; roles?: any[] } | null} session
  */
 export function getHeaderNavLinks(session) {
   if (!session?.activeRole) return publicNavLinks;
   if (STAFF_ROLES.has(session.activeRole)) return staffHeaderNav;
-  return attendeeHeaderNav;
+  const slug = getActiveConferenceSlug(session);
+  return [
+    { label: "Conference home", href: slug ? `/conferences/${slug}` : "/access" },
+    { label: "Profile", href: "/dashboard/profile" },
+    { label: "About", href: "/about" },
+  ];
 }
+
+/** @deprecated Use getHeaderNavLinks */
+export const attendeeHeaderNav = [];
 
 /** @deprecated Use publicNavLinks */
 export const mainNavLinks = publicNavLinks;

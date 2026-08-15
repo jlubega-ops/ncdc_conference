@@ -20,6 +20,7 @@ import { Field, FormSection, selectClass } from "@/components/forms/FormLayout";
  *   onEmailChange?: (value: string) => void;
  *   emailReadOnly?: boolean;
  *   showEmail?: boolean;
+ *   disabled?: boolean;
  * }} props
  */
 export function UserProfileFields({
@@ -30,9 +31,10 @@ export function UserProfileFields({
   onEmailChange,
   emailReadOnly = false,
   showEmail = true,
+  disabled = false,
 }) {
   return (
-    <>
+    <fieldset disabled={disabled} className="min-w-0 border-0 p-0">
       <FormSection title="Your details">
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
@@ -182,7 +184,7 @@ export function UserProfileFields({
             </select>
           </Field>
           <Input
-            label="Institution"
+            label="Organisation"
             requiredMark
             value={values.institution ?? ""}
             onChange={(e) => onChange("institution", e.target.value)}
@@ -206,6 +208,6 @@ export function UserProfileFields({
           </div>
         </Field>
       </FormSection>
-    </>
+    </fieldset>
   );
 }

@@ -39,7 +39,7 @@ const tabs = [
   { id: "overview", label: "Overview" },
   { id: "cfp", label: "Call for Papers" },
   { id: "programme", label: "Programme" },
-  { id: "registration", label: "Registration" },
+  { id: "registration", label: "Registration and online links" },
   { id: "attendance", label: "Attendance" },
   { id: "certificates", label: "Certificates" },
   { id: "feedback", label: "Feedback" },

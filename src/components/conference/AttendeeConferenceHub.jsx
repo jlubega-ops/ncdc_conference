@@ -30,8 +30,8 @@ const TAB_META = {
     icon: CalendarDays,
   },
   registration: {
-    label: "Registration",
-    description: "Your registration status",
+    label: "Registration and online links",
+    description: "Status, payment, and streams",
     icon: ClipboardList,
   },
   attendance: {

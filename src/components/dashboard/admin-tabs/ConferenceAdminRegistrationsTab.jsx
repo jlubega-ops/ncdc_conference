@@ -13,8 +13,16 @@ import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
 import { formatAdminDate } from "./AdminTabShell";
 import { RegistrationDetailFields } from "./RegistrationDetailFields";
+import { OrganisationSuggestInput } from "@/components/forms/OrganisationSuggestInput";
 
-const EMPTY_PERSON = { firstName: "", lastName: "", email: "", comment: "", notes: "" };
+const EMPTY_PERSON = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  organisation: "",
+  comment: "",
+  notes: "",
+};
 
 const STATUS_LABELS = {
   PENDING: "Pending",
@@ -82,7 +90,15 @@ export function ConferenceAdminRegistrationsTab({
   const [repForce, setRepForce] = useState(false);
   const [repWarning, setRepWarning] = useState("");
   const [repsView, setRepsView] = useState(null);
+  const [organisations, setOrganisations] = useState([]);
 
+  const organisationOptions = useMemo(() => {
+    const set = new Set(organisations);
+    for (const row of registrations) {
+      if (row.institution) set.add(row.institution);
+    }
+    return [...set];
+  }, [organisations, registrations]);
   const isAdminUpload = registrationMode === "ADMIN_UPLOAD";
   const isOpenNoReg = registrationMode === "OPEN_NO_REGISTRATION";
   const canManageRoster = !isOpenNoReg;
@@ -98,6 +114,7 @@ export function ConferenceAdminRegistrationsTab({
         row.displayName,
         row.user?.email,
         row.institution,
+        row.organisation,
         row.status,
         row.accessCode,
       ]
@@ -135,6 +152,24 @@ export function ConferenceAdminRegistrationsTab({
       setLoading(false);
     }
   }, [conferenceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrganisations() {
+      try {
+        const res = await fetch("/api/admin/organisations");
+        const data = await res.json();
+        if (!res.ok || cancelled) return;
+        setOrganisations(Array.isArray(data.organisations) ? data.organisations : []);
+      } catch {
+        /* suggestions stay empty — typing still works */
+      }
+    }
+    loadOrganisations();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     // Initial / conference-scoped fetch for the registrations roster.
@@ -352,6 +387,7 @@ export function ConferenceAdminRegistrationsTab({
           lastName: addForm.lastName.trim(),
           email: addForm.email.trim() || undefined,
           comment: addForm.comment.trim() || undefined,
+          organisation: addForm.organisation.trim() || undefined,
           forceDuplicate: force,
         }),
       });
@@ -363,6 +399,14 @@ export function ConferenceAdminRegistrationsTab({
       }
       if (!res.ok) throw new Error(data.error || "Could not add attendee.");
       toast.success(data.message || "Attendee added.");
+      const org = addForm.organisation.trim();
+      if (org) {
+        setOrganisations((prev) =>
+          prev.some((item) => item.toLowerCase() === org.toLowerCase())
+            ? prev
+            : [...prev, org].sort((a, b) => a.localeCompare(b)),
+        );
+      }
       setCreatedAccessKey(data.accessKey || null);
       setAddOpen(false);
       setAddForm(EMPTY_PERSON);
@@ -441,7 +485,7 @@ export function ConferenceAdminRegistrationsTab({
           value,
           label,
         }))}
-        searchPlaceholder="Search name, email, or access code…"
+        searchPlaceholder="Search name, email, organisation, or access code…"
         trailing={
           canManageRoster ? (
             <div className="flex flex-wrap gap-2">
@@ -549,7 +593,7 @@ export function ConferenceAdminRegistrationsTab({
                 </th>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Institution</th>
+                <th className="px-4 py-3">Organisation</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Access code</th>
                 <th className="px-4 py-3">Registered</th>
@@ -802,7 +846,7 @@ export function ConferenceAdminRegistrationsTab({
                     onChange={(e) => setEditForm((p) => ({ ...p, telephone: e.target.value }))}
                   />
                   <Input
-                    label="Institution"
+                    label="Organisation"
                     value={editForm.institution}
                     onChange={(e) => setEditForm((p) => ({ ...p, institution: e.target.value }))}
                   />
@@ -1094,6 +1138,19 @@ export function ConferenceAdminRegistrationsTab({
                   setAddForce(false);
                   setAddWarning("");
                   setAddForm((p) => ({ ...p, email: e.target.value }));
+                }}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <OrganisationSuggestInput
+                label="Organisation"
+                hint="Optional — suggestions appear as you type from existing organisations"
+                value={addForm.organisation}
+                organisations={organisationOptions}
+                onChange={(value) => {
+                  setAddForce(false);
+                  setAddWarning("");
+                  setAddForm((p) => ({ ...p, organisation: value }));
                 }}
               />
             </div>

@@ -12,7 +12,7 @@ import { getHeaderNavLinks } from "@/lib/data/navigation";
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { isAuthenticated, session } = useSession();
+  const { isAuthenticated, session, sessionReady } = useSession();
   const navLinks = getHeaderNavLinks(session);
 
   return (
@@ -34,7 +34,9 @@ export function Header() {
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
-            {isAuthenticated ? (
+            {!sessionReady ? (
+              <div className="h-9 w-28" aria-hidden />
+            ) : isAuthenticated ? (
               <ProfileMenu />
             ) : (
               <>
@@ -49,7 +51,7 @@ export function Header() {
           </div>
 
           <div className="flex items-center gap-2 md:hidden">
-            {isAuthenticated ? <ProfileMenu /> : null}
+            {sessionReady && isAuthenticated ? <ProfileMenu /> : null}
             <button
               type="button"
               className="rounded-md p-2 text-foreground hover:bg-neutral-50"
@@ -78,7 +80,7 @@ export function Header() {
                   {link.label}
                 </Link>
               ))}
-              {!isAuthenticated ? (
+              {!sessionReady || isAuthenticated ? null : (
                 <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
                   <Button variant="outline" size="sm" href="/login">
                     Sign in
@@ -87,7 +89,7 @@ export function Header() {
                     Browse conferences
                   </Button>
                 </div>
-              ) : null}
+              )}
             </div>
           </nav>
         ) : null}

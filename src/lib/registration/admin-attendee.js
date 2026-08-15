@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { buildProfilePayload, getProfileFromUser } from "@/lib/users/profile";
 import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
+import { rememberOrganisation } from "@/lib/organisations/service";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -122,6 +123,7 @@ export async function findAttendeeDuplicates({
  *   lastName: string;
  *   email?: string | null;
  *   comment?: string | null;
+ *   organisation?: string | null;
  *   forceDuplicate?: boolean;
  *   createdById?: string | null;
  * }} params
@@ -132,6 +134,7 @@ export async function addAttendeeByAdmin({
   lastName,
   email,
   comment = null,
+  organisation = null,
   forceDuplicate = false,
 }) {
   const first = normalizeNamePart(firstName);
@@ -173,9 +176,11 @@ export async function addAttendeeByAdmin({
     normalizedEmail = placeholderEmail();
   }
 
+  const organisationName = String(organisation || "").trim();
   const profile = buildProfilePayload({
     firstName: first,
     lastName: last,
+    institution: organisationName,
   });
   const fullName = profile.fullName || `${first} ${last}`;
   const adminComment = String(comment || "").trim() || null;
@@ -198,12 +203,14 @@ export async function addAttendeeByAdmin({
       include: { roles: true },
     });
   } else {
+    const existingProfile = getProfileFromUser(user);
+    profile.institution = organisationName || existingProfile.institution || "";
     await prisma.user.update({
       where: { id: user.id },
       data: {
         name: fullName,
         profileData: {
-          ...getProfileFromUser(user),
+          ...existingProfile,
           ...profile,
         },
       },
@@ -247,6 +254,8 @@ export async function addAttendeeByAdmin({
     conference,
     sendEmail: false,
   });
+
+  rememberOrganisation(organisationName);
 
   return {
     needsConfirmation: false,

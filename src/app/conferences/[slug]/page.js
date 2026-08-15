@@ -7,7 +7,7 @@ import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
 import {
-  getPublishedConferenceBySlug,
+  getPublishedConferenceBySlugCached,
   isInviteOnlyConference,
 } from "@/lib/conferences/service";
 import { getMemberContentAvailability } from "@/lib/conference-content/service";
@@ -34,7 +34,7 @@ function conferenceReturnPath(slug, query) {
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) return { title: "Conference Not Found" };
   if (isInviteOnlyConference(conference)) {
     return { title: "Conference | Conference Management", robots: { index: false, follow: false } };
@@ -50,7 +50,7 @@ export const dynamic = "force-dynamic";
 export default async function ConferenceDetailPage({ params, searchParams }) {
   const { slug } = await params;
   const query = await searchParams;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
 
   if (!conference) notFound();
 

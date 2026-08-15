@@ -1,5 +1,5 @@
 import { HomeLanding } from "@/components/home/HomeLanding";
-import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
+import { RedirectIfAuthenticatedClient } from "@/components/auth/RedirectIfAuthenticatedClient";
 
 export const metadata = {
   title: "Conference Management",
@@ -7,7 +7,11 @@ export const metadata = {
     "Discover open conferences, register for events, and manage programmes from one place.",
 };
 
-export default async function HomePage() {
-  await redirectIfAuthenticated();
-  return <HomeLanding />;
+export default function HomePage() {
+  return (
+    <>
+      <RedirectIfAuthenticatedClient />
+      <HomeLanding />
+    </>
+  );
 }

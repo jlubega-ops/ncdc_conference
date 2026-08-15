@@ -9,6 +9,7 @@ import { certificateIssuedEmail } from "@/lib/email/templates";
 import {
   certificateEligibilityMessage,
   isCertificateEligible,
+  meetsCertificateAttendanceRules,
 } from "@/lib/certificates/eligibility";
 import {
   conferenceCodeFromSlug,
@@ -18,6 +19,8 @@ import {
   normalizeCertificateNumberInput,
 } from "@/lib/certificates/number";
 import { buildCertificateVerifyUrl, renderCertificatePdf } from "@/lib/certificates/pdf";
+import { readCachedCertificatePdf, writeCachedCertificatePdf } from "@/lib/certificates/pdf-cache";
+import { withCertificatePdfSlot } from "@/lib/certificates/render-queue";
 
 const MAX_NUMBER_ATTEMPTS = 8;
 
@@ -115,6 +118,12 @@ export async function getCertificateSummaries(userId) {
       mapped.status === "completed" ||
       (stats.remaining === 0 && stats.elapsed >= stats.totalDays && stats.totalDays > 0);
 
+    const message = !eligible
+      ? certificateEligibilityMessage(stats, mapped)
+      : cert
+        ? "Your certificate has been issued."
+        : certificateEligibilityMessage(stats, mapped);
+
     return {
       conference: {
         slug: mapped.slug,
@@ -135,9 +144,7 @@ export async function getCertificateSummaries(userId) {
             emailedAt: cert.emailedAt,
           }
         : null,
-      message: cert
-        ? "Your certificate has been issued."
-        : certificateEligibilityMessage(stats, mapped),
+      message,
     };
   });
 }
@@ -192,9 +199,8 @@ async function createCertificateRecord(conference, userId, recipientName, stats)
  */
 export async function issueCertificateForUser(userId, slug, opts = {}) {
   const ctx = await getRegistrationContext(userId, slug);
-  const eligible = isCertificateEligible(ctx.stats, ctx.conference);
 
-  if (!eligible) {
+  if (!meetsCertificateAttendanceRules(ctx.stats, ctx.conference)) {
     throw new Error(certificateEligibilityMessage(ctx.stats, ctx.conference));
   }
 
@@ -217,7 +223,7 @@ export async function issueCertificateForUser(userId, slug, opts = {}) {
     );
   }
 
-  const shouldEmail = opts.sendEmail !== false;
+  const shouldEmail = Boolean(opts.sendEmail);
   if (shouldEmail && !cert.emailedAt) {
     try {
       await sendCertificateEmail(cert, ctx.userEmail);
@@ -273,21 +279,31 @@ async function sendCertificateEmail(cert, toEmail) {
  * @param {any} cert
  */
 async function buildCertificatePdfBuffer(cert) {
+  const cached = await readCachedCertificatePdf(cert.id);
+  if (cached) return cached;
+
   const mapped = mapConferenceForUi(cert.conference);
   const verifyUrl = buildCertificateVerifyUrl(cert.certificateNumber);
 
-  return renderCertificatePdf({
-    recipientName: cert.recipientName,
-    conferenceTitle: mapped.title,
-    conferenceTheme: mapped.theme || null,
-    dateRange: mapped.dateRange || null,
-    attendancePercent: cert.attendancePercent,
-    daysAttended: cert.daysAttended,
-    totalDays: cert.totalDays,
-    certificateNumber: cert.certificateNumber,
-    issuedAt: cert.issuedAt,
-    verifyUrl,
+  const buffer = await withCertificatePdfSlot(() =>
+    renderCertificatePdf({
+      recipientName: cert.recipientName,
+      conferenceTitle: mapped.title,
+      conferenceTheme: mapped.theme || null,
+      dateRange: mapped.dateRange || null,
+      attendancePercent: cert.attendancePercent,
+      daysAttended: cert.daysAttended,
+      totalDays: cert.totalDays,
+      certificateNumber: cert.certificateNumber,
+      issuedAt: cert.issuedAt,
+      verifyUrl,
+    }),
+  );
+
+  await writeCachedCertificatePdf(cert.id, buffer).catch(() => {
+    /* cache is optional — still return the PDF */
   });
+  return buffer;
 }
 
 /**
@@ -295,7 +311,12 @@ async function buildCertificatePdfBuffer(cert) {
  * @param {string} slug
  */
 export async function getCertificatePdfForUser(userId, slug) {
-  await issueCertificateForUser(userId, slug, { sendEmail: true });
+  const ctx = await getRegistrationContext(userId, slug);
+  if (!isCertificateEligible(ctx.stats, ctx.conference)) {
+    throw new Error(certificateEligibilityMessage(ctx.stats, ctx.conference));
+  }
+
+  await issueCertificateForUser(userId, slug, { sendEmail: false });
   const cert = await prisma.conferenceCertificate.findFirst({
     where: {
       userId,
@@ -314,8 +335,12 @@ export async function getCertificatePdfForUser(userId, slug) {
  * @param {string} slug
  */
 export async function emailCertificateToUser(userId, slug) {
-  const cert = await issueCertificateForUser(userId, slug, { sendEmail: false });
   const ctx = await getRegistrationContext(userId, slug);
+  if (!isCertificateEligible(ctx.stats, ctx.conference)) {
+    throw new Error(certificateEligibilityMessage(ctx.stats, ctx.conference));
+  }
+
+  const cert = await issueCertificateForUser(userId, slug, { sendEmail: false });
   const result = await sendCertificateEmail(cert, ctx.userEmail);
 
   await prisma.conferenceCertificate.update({

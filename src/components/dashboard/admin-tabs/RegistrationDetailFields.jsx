@@ -16,7 +16,7 @@ export function RegistrationDetailFields({ row }) {
       form.telephone ? `${form.countryCode ?? ""} ${form.telephone}`.trim() : null,
     ],
     ["Country of origin", form.countryOfOrigin],
-    ["Institution", form.institution || row.institution],
+    ["Organisation", form.institution || row.institution],
     ["Attendance", form.attendanceMode || row.attendanceMode],
     [
       "Sub-themes",

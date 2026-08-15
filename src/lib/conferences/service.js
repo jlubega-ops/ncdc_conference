@@ -1,3 +1,4 @@
+import { unstable_cache, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import {
   CATEGORIES,
@@ -149,6 +150,8 @@ export function mapConferenceForUi(conference) {
   };
 }
 
+export const PUBLISHED_CONFERENCES_CACHE_TAG = "published-conferences";
+
 export async function getPublishedConferences() {
   try {
     const rows = await prisma.conference.findMany({
@@ -165,6 +168,12 @@ export async function getPublishedConferences() {
   }
 }
 
+export const getPublishedConferencesCached = unstable_cache(
+  async () => getPublishedConferences(),
+  ["published-conferences-list"],
+  { revalidate: 60, tags: [PUBLISHED_CONFERENCES_CACHE_TAG] },
+);
+
 /**
  * @param {string} slug
  */
@@ -173,6 +182,28 @@ export async function getPublishedConferenceBySlug(slug) {
     where: { slug, publicationStatus: "PUBLISHED" },
   });
   return row ? mapConferenceForUi(row) : null;
+}
+
+/**
+ * @param {string} slug
+ */
+export function getPublishedConferenceBySlugCached(slug) {
+  return unstable_cache(
+    async () => getPublishedConferenceBySlug(slug),
+    ["published-conference", slug],
+    {
+      revalidate: 30,
+      tags: [PUBLISHED_CONFERENCES_CACHE_TAG, `conference:${slug}`],
+    },
+  )();
+}
+
+/**
+ * @param {string} [slug]
+ */
+export function revalidatePublishedConferenceCache(slug) {
+  revalidateTag(PUBLISHED_CONFERENCES_CACHE_TAG, "max");
+  if (slug) revalidateTag(`conference:${slug}`, "max");
 }
 
 /**

@@ -255,12 +255,11 @@ export async function checkInAttendance(userId, slug) {
     dayIndex: detail.today.dayIndex,
   });
 
-  // When certificate becomes available, email the PDF to the registered address.
   try {
     const { issueCertificateForUser } = await import("@/lib/certificates/service");
-    await issueCertificateForUser(userId, slug, { sendEmail: true });
+    await issueCertificateForUser(userId, slug, { sendEmail: false });
   } catch {
-    /* not eligible yet — ignore */
+    /* not eligible yet, or certificates disabled */
   }
 
   return getAttendanceConferenceDetail(userId, slug);
