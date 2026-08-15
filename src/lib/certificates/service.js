@@ -23,6 +23,8 @@ import { buildCertificateVerifyUrl, renderCertificatePdf } from "@/lib/certifica
 import { readCachedCertificatePdf, writeCachedCertificatePdf, deleteCachedCertificatePdf } from "@/lib/certificates/pdf-cache";
 import { withCertificatePdfSlot } from "@/lib/certificates/render-queue";
 import { getCertificateEmailCooldown } from "@/lib/certificates/email-cooldown";
+import { isCertificateEmailPending } from "@/lib/certificates/email-jobs";
+import { getSmtpConfig } from "@/lib/email/config";
 
 const MAX_NUMBER_ATTEMPTS = 8;
 
@@ -73,6 +75,52 @@ async function getRegistrationContext(userId, slug) {
     recipientName,
     userEmail: registration.user.email,
   };
+}
+
+/**
+ * @param {string} message
+ * @param {number} status
+ */
+function httpError(message, status) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+/**
+ * Fast checks before queueing a background certificate email.
+ * @param {string} userId
+ * @param {string} slug
+ */
+export async function assertCertificateCanBeEmailed(userId, slug) {
+  const ctx = await getRegistrationContext(userId, slug);
+  const email = String(ctx.userEmail || "").trim();
+  if (!email) {
+    throw httpError("Your account has no email address. Download the PDF instead.", 400);
+  }
+  if (!isCertificateEligible(ctx.stats, ctx.conference)) {
+    throw httpError(certificateEligibilityMessage(ctx.stats, ctx.conference), 400);
+  }
+  if (!getSmtpConfig()) {
+    throw httpError(
+      "Email sending is not available right now. Please download the PDF instead.",
+      503,
+    );
+  }
+  if (isCertificateEmailPending(userId, slug)) {
+    throw httpError("Your certificate email is already being sent. Please wait a moment.", 409);
+  }
+
+  const existing = await prisma.conferenceCertificate.findFirst({
+    where: { userId, conference: { slug } },
+    select: { emailedAt: true },
+  });
+  const cooldown = getCertificateEmailCooldown(existing?.emailedAt);
+  if (cooldown.blocked) {
+    throw httpError(cooldown.message, 429);
+  }
+
+  return { email };
 }
 
 /**
@@ -362,35 +410,49 @@ export async function getCertificatePdfForUser(userId, slug) {
  */
 export async function emailCertificateToUser(userId, slug) {
   const ctx = await getRegistrationContext(userId, slug);
+  const toEmail = String(ctx.userEmail || "").trim();
+  if (!toEmail) {
+    throw httpError("Your account has no email address. Download the PDF instead.", 400);
+  }
   if (!isCertificateEligible(ctx.stats, ctx.conference)) {
-    throw new Error(certificateEligibilityMessage(ctx.stats, ctx.conference));
+    throw httpError(certificateEligibilityMessage(ctx.stats, ctx.conference), 400);
   }
 
   const cert = await issueCertificateForUser(userId, slug, { sendEmail: false });
   const cooldown = getCertificateEmailCooldown(cert.emailedAt);
   if (cooldown.blocked) {
-    const error = new Error(cooldown.message);
-    error.status = 429;
-    throw error;
+    throw httpError(cooldown.message, 429);
   }
 
-  const result = await sendCertificateEmail(cert, ctx.userEmail);
-
-  if (result.ok) {
-    await prisma.conferenceCertificate.update({
-      where: { id: cert.id },
-      data: { emailedAt: new Date() },
-    });
+  let result;
+  try {
+    result = await sendCertificateEmail(cert, toEmail);
+  } catch (err) {
+    console.error("[certificate] Email send failed:", err);
+    throw httpError(
+      `We could not send the certificate to ${toEmail}. Please try again. If it keeps failing, download the PDF instead.`,
+      502,
+    );
   }
+
+  if (!result.ok) {
+    throw httpError(
+      result.skipped
+        ? "Email sending is not available right now. Please download the PDF instead."
+        : `We could not send the certificate to ${toEmail}. Please try again. If it keeps failing, download the PDF instead.`,
+      result.skipped ? 503 : 502,
+    );
+  }
+
+  await prisma.conferenceCertificate.update({
+    where: { id: cert.id },
+    data: { emailedAt: new Date() },
+  });
 
   return {
-    ok: result.ok,
-    skipped: result.skipped,
-    message: result.ok
-      ? `Certificate sent to ${ctx.userEmail}. You can email it again after 24 hours. Download is unlimited.`
-      : result.skipped
-        ? "SMTP is not configured. Download the PDF instead."
-        : result.error,
+    ok: true,
+    skipped: false,
+    message: `Certificate sent to ${toEmail}. You can email it again after 24 hours. Download is unlimited.`,
   };
 }
 

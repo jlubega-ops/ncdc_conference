@@ -7,27 +7,34 @@ import { ConferenceImage } from "@/components/ConferenceImage";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { cn } from "@/lib/cn";
+import { requestCertificateEmail } from "@/lib/certificates/request-email";
 
 export function CertificatesList() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busySlug, setBusySlug] = useState(null);
+  const [downloadSlug, setDownloadSlug] = useState(null);
+  const [queuedEmailSlugs, setQueuedEmailSlugs] = useState(() => new Set());
   const [confirmSlug, setConfirmSlug] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const res = await fetch("/api/me/certificates");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load certificates.");
       setItems(data.certificates ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load certificates.");
-      setItems([]);
+      if (!silent) {
+        setError(e instanceof Error ? e.message : "Could not load certificates.");
+        setItems([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -37,12 +44,12 @@ export function CertificatesList() {
 
   async function downloadCertificate(slug) {
     setConfirmSlug(null);
-    setBusySlug(slug);
+    setDownloadSlug(slug);
     try {
       const res = await fetch(`/api/me/certificates/${slug}/download`);
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Could not download certificate.");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Could not download the certificate PDF. Please try again.");
       }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition");
@@ -55,28 +62,28 @@ export function CertificatesList() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Certificate downloaded.");
-      await load();
+      await load({ silent: true });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not download certificate.");
+      toast.error(
+        e instanceof Error ? e.message : "Could not download the certificate PDF. Please try again.",
+      );
     } finally {
-      setBusySlug(null);
+      setDownloadSlug(null);
     }
   }
 
-  async function emailCertificate(slug) {
-    setBusySlug(slug);
-    try {
-      const res = await fetch(`/api/me/certificates/${slug}/email`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not send certificate.");
-      if (data.ok) toast.success(data.message || "Certificate emailed.");
-      else toast.warn(data.message || "Email could not be sent.");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not send certificate.");
-    } finally {
-      setBusySlug(null);
-    }
+  function emailCertificate(slug) {
+    setQueuedEmailSlugs((prev) => new Set(prev).add(slug));
+    void requestCertificateEmail(slug, {
+      onConfirmed: () => load({ silent: true }),
+      onFailed: () => {
+        setQueuedEmailSlugs((prev) => {
+          const next = new Set(prev);
+          next.delete(slug);
+          return next;
+        });
+      },
+    });
   }
 
   if (loading) {
@@ -101,9 +108,12 @@ export function CertificatesList() {
     <>
     <ul className="mt-8 grid gap-4 sm:grid-cols-2">
       {items.map((row) => {
-        const busy = busySlug === row.conference.slug;
+        const downloading = downloadSlug === row.conference.slug;
         const canAct = row.eligible;
-        const canEmail = Boolean(row.canEmail ?? (canAct && !row.emailCooldownMessage));
+        const emailQueued = queuedEmailSlugs.has(row.conference.slug);
+        const canEmail = Boolean(
+          !emailQueued && (row.canEmail ?? (canAct && !row.emailCooldownMessage)),
+        );
 
         return (
           <li
@@ -172,16 +182,16 @@ export function CertificatesList() {
                   <Button
                     variant={canAct ? "primary" : "outline"}
                     size="sm"
-                    disabled={!canAct || busy}
+                    disabled={!canAct || downloading}
                     onClick={() => setConfirmSlug(row.conference.slug)}
                   >
                     <Icon icon={Download} size="sm" />
-                    {busy ? "Preparing certificate…" : "Download PDF"}
+                    {downloading ? "Preparing certificate…" : "Download PDF"}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={!canEmail || busy}
+                    disabled={!canEmail}
                     title={row.emailCooldownMessage || undefined}
                     onClick={() => emailCertificate(row.conference.slug)}
                   >
@@ -218,7 +228,7 @@ export function CertificatesList() {
       message={`This PDF will be issued to:\n\n${confirmRow?.recipientName || "your profile name"}\n\nIf this is not correct, update your profile (or ask the organisers) before downloading. Repeat downloads are fast once the name is right.`}
       confirmLabel="Download PDF"
       cancelLabel="Go back"
-      loading={Boolean(busySlug)}
+      loading={Boolean(downloadSlug)}
     />
     </>
   );

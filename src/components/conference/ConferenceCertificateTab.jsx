@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { cn } from "@/lib/cn";
+import { requestCertificateEmail } from "@/lib/certificates/request-email";
 
 /**
  * Embedded certificate view for a conference's Certificate tab (no dashboard links).
@@ -16,12 +17,15 @@ export function ConferenceCertificateTab({ slug }) {
   const [row, setRow] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
+  const [emailQueued, setEmailQueued] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const res = await fetch("/api/me/certificates");
       const data = await res.json();
@@ -29,9 +33,11 @@ export function ConferenceCertificateTab({ slug }) {
       const match = (data.certificates ?? []).find((c) => c.conference.slug === slug);
       setRow(match ?? null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load certificate status.");
+      if (!silent) {
+        setError(e instanceof Error ? e.message : "Could not load certificate status.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [slug]);
 
@@ -41,12 +47,12 @@ export function ConferenceCertificateTab({ slug }) {
 
   async function downloadCertificate() {
     setConfirmOpen(false);
-    setBusy(true);
+    setDownloadBusy(true);
     try {
       const res = await fetch(`/api/me/certificates/${slug}/download`);
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Could not download certificate.");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Could not download the certificate PDF. Please try again.");
       }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition");
@@ -59,28 +65,20 @@ export function ConferenceCertificateTab({ slug }) {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Certificate downloaded.");
-      await load();
+      await load({ silent: true });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not download certificate.");
+      toast.error(e instanceof Error ? e.message : "Could not download the certificate PDF. Please try again.");
     } finally {
-      setBusy(false);
+      setDownloadBusy(false);
     }
   }
 
-  async function emailCertificate() {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/me/certificates/${slug}/email`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not send certificate.");
-      if (data.ok) toast.success(data.message || "Certificate emailed.");
-      else toast.warn(data.message || "Email could not be sent.");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not send certificate.");
-    } finally {
-      setBusy(false);
-    }
+  function emailCertificate() {
+    setEmailQueued(true);
+    void requestCertificateEmail(slug, {
+      onConfirmed: () => load({ silent: true }),
+      onFailed: () => setEmailQueued(false),
+    });
   }
 
   if (loading) {
@@ -100,8 +98,10 @@ export function ConferenceCertificateTab({ slug }) {
   }
 
   const canAct = row.eligible;
-  const canEmail = Boolean(row.canEmail ?? (canAct && !row.emailCooldownMessage));
-  const emailLabel = canEmail ? "Send to email" : row.nextEmailAt ? "Email sent" : "Send to email";
+  const canEmail = Boolean(
+    !emailQueued && (row.canEmail ?? (canAct && !row.emailCooldownMessage)),
+  );
+  const emailLabel = canEmail ? "Send to email" : "Email sent";
 
   return (
     <div
@@ -157,24 +157,24 @@ export function ConferenceCertificateTab({ slug }) {
         <Button
           variant={canAct ? "primary" : "outline"}
           size="sm"
-          disabled={!canAct || busy}
+          disabled={!canAct || downloadBusy}
           onClick={() => setConfirmOpen(true)}
         >
           <Icon icon={Download} size="sm" />
-          {busy ? "Preparing certificate…" : "Download PDF"}
+          {downloadBusy ? "Preparing certificate…" : "Download PDF"}
         </Button>
         <Button
           variant="outline"
           size="sm"
-          disabled={!canEmail || busy}
+          disabled={!canEmail}
           title={row.emailCooldownMessage || undefined}
           onClick={emailCertificate}
         >
           <Icon icon={Mail} size="sm" />
-          {busy ? "Working…" : emailLabel}
+          {emailLabel}
         </Button>
       </div>
-      {busy ? (
+      {downloadBusy ? (
         <p className="mt-2 text-xs text-muted-foreground">
           First download can take up to a couple of minutes if many people generate PDFs at once.
           Keep this page open. After that, you can download again as often as you like.
@@ -205,7 +205,7 @@ export function ConferenceCertificateTab({ slug }) {
         message={`This PDF will be issued to:\n\n${row.recipientName || "your profile name"}\n\nIf this is not correct, update your profile (or ask the organisers) before downloading. Repeat downloads are fast once the name is right.`}
         confirmLabel="Download PDF"
         cancelLabel="Go back"
-        loading={busy}
+        loading={downloadBusy}
       />
     </div>
   );
