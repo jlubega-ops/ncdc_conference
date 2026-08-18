@@ -1,6 +1,3 @@
-import { prisma } from "@/lib/prisma";
-import { mapConferenceForUi } from "@/lib/conferences/service";
-
 /**
  * @param {Date | string | null | undefined} openAt
  * @param {Date | string | null | undefined} closeAt
@@ -70,31 +67,4 @@ export function getConferenceYear(conference) {
   }
   if (conference.year) return conference.year;
   return new Date().getFullYear();
-}
-
-export async function getRegistrableConferences() {
-  const rows = await prisma.conference.findMany({
-    where: { publicationStatus: "PUBLISHED" },
-    orderBy: [{ startDate: "asc" }, { title: "asc" }],
-  });
-
-  const now = new Date();
-
-  return rows
-    .map((row) => {
-      const mapped = mapConferenceForUi(row);
-      return {
-        id: mapped.id,
-        slug: mapped.slug,
-        title: mapped.title,
-        status: mapped.status,
-        year: getConferenceYear(mapped),
-        dateRange: mapped.dateRange,
-        registrationOpenAt: mapped.registrationOpenAt,
-        registrationCloseAt: mapped.registrationCloseAt,
-        cfpOpenAt: mapped.cfpOpenAt,
-        cfpCloseAt: mapped.cfpCloseAt,
-      };
-    })
-    .filter((c) => isRegistrableConference(c, now));
 }

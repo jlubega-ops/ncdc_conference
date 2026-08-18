@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { UserCheck, UserX } from "lucide-react";
+import { UserCheck, UserX, FileSpreadsheet } from "lucide-react";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { TablePagination } from "@/components/ui/TablePagination";
 import { cn } from "@/lib/cn";
+import { paginateRows } from "@/lib/table/paginate";
+import { downloadCsv } from "@/lib/csv/download";
 import { formatAdminDate } from "./AdminTabShell";
 
 /**
@@ -26,6 +30,7 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -85,6 +90,36 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
       return true;
     });
   }, [data, search, dayFilter, statusFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, dayFilter, statusFilter]);
+
+  const paged = useMemo(
+    () => paginateRows(filteredRoster, page, 25),
+    [filteredRoster, page],
+  );
+
+  function exportAttendance() {
+    const days = data?.days ?? [];
+    downloadCsv(
+      "attendance.csv",
+      [
+        "Name",
+        "Email",
+        "Organisation",
+        "Days attended",
+        ...days.map((d) => `Day ${d.dayIndex} (${d.date})`),
+      ],
+      filteredRoster.map((row) => [
+        row.name || "",
+        row.email || "",
+        row.institution || "",
+        `${row.daysAttended ?? 0}/${row.totalDays ?? days.length}`,
+        ...days.map((d) => (row.byDay?.[d.date]?.attended ? "Present" : "Absent")),
+      ]),
+    );
+  }
 
   /**
    * Keep day chips / overview counts in sync immediately after an override.
@@ -203,10 +238,10 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
     }
   }
 
-  if (loading) {
+  if (loading && !data) {
     return <p className="text-sm text-muted-foreground">Loading attendance…</p>;
   }
-  if (error) {
+  if (error && !data) {
     return <p className="text-sm text-error">{error}</p>;
   }
 
@@ -214,80 +249,78 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
   const days = data?.days ?? [];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">Attendance overview</h3>
-        <p className="text-sm text-foreground/80">
-          Compare registered participants with who attended each day. Override presence here. Edit
-          or delete users from the Registrations tab.
-        </p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Attendance overview</h3>
+          <p className="text-sm text-foreground/80">
+            Override presence here. Edit or delete users from the Registrations tab.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={exportAttendance}
+          disabled={filteredRoster.length === 0}
+        >
+          <Icon icon={FileSpreadsheet} size="sm" />
+          Export
+        </Button>
       </div>
 
-      <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-md border border-border bg-surface px-4 py-2.5 text-sm text-foreground">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground">
         <StatInline label="Registered" value={summary?.registered ?? 0} />
         <StatInline
-          label={
-            overviewDay
-              ? `Present (Day ${overviewDay.dayIndex})`
-              : "Present"
-          }
+          label={overviewDay ? `Day ${overviewDay.dayIndex} present` : "Present"}
           value={overviewDay?.attended ?? 0}
           tone="primary"
         />
         <StatInline
-          label={overviewDay ? `Absent (Day ${overviewDay.dayIndex})` : "Absent"}
+          label="Absent"
           value={overviewDay?.absent ?? 0}
           tone="amber"
         />
         <StatInline
-          label={overviewDay ? `Rate (Day ${overviewDay.dayIndex})` : "Attendance rate"}
+          label="Rate"
           value={`${overviewDay?.rate ?? 0}%`}
           tone="primary"
         />
       </div>
 
       {days.length > 0 ? (
-        <div>
-          <p className="mb-2 text-sm font-medium text-foreground">By conference day</p>
-          <div className="flex flex-wrap gap-2">
-            {days.map((day) => (
-              <button
-                key={day.date}
-                type="button"
-                onClick={() => setDayFilter(day.date)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
-                  dayFilter === day.date
-                    ? "border-primary bg-primary-light text-foreground"
-                    : "border-border bg-surface text-foreground hover:border-primary/40",
-                )}
-              >
-                <span className="font-semibold">Day {day.dayIndex}</span>
-                <span className="text-foreground/80">{day.date}</span>
-                {day.isToday ? (
-                  <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary-foreground">
-                    Today
-                  </span>
-                ) : null}
-                <span className="text-foreground/80">·</span>
-                <span>
-                  <span className="font-semibold text-primary">{day.attended}</span> attended
+        <div className="flex flex-wrap gap-1.5">
+          {days.map((day) => (
+            <button
+              key={day.date}
+              type="button"
+              onClick={() => setDayFilter(day.date)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors",
+                dayFilter === day.date
+                  ? "border-primary bg-primary-light text-foreground"
+                  : "border-border bg-surface text-foreground hover:border-primary/40",
+              )}
+            >
+              <span className="font-semibold">Day {day.dayIndex}</span>
+              {day.isToday ? (
+                <span className="rounded bg-primary px-1 py-px text-[10px] font-semibold uppercase text-primary-foreground">
+                  Today
                 </span>
-                <span>
-                  <span className="font-semibold text-amber-800">{day.absent}</span> absent
-                </span>
-                <span className="font-semibold text-foreground">{day.rate}%</span>
-              </button>
-            ))}
-          </div>
+              ) : null}
+              <span className="tabular-nums text-foreground/80">
+                <span className="font-semibold text-primary">{day.attended}</span>/
+                {day.registered} · {day.rate}%
+              </span>
+            </button>
+          ))}
         </div>
       ) : (
-        <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-foreground/80">
+        <p className="rounded-md border border-dashed border-border px-4 py-4 text-center text-sm text-foreground/80">
           No conference days configured yet.
         </p>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[180px] flex-1">
           <Input
             label="Search participants"
@@ -332,6 +365,7 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
           No confirmed registrations yet.
         </p>
       ) : (
+        <>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full text-sm">
             <thead className="bg-neutral-50 text-left text-xs uppercase text-foreground/80">
@@ -347,7 +381,7 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
               </tr>
             </thead>
             <tbody>
-              {filteredRoster.map((row) => {
+              {paged.rows.map((row) => {
                 const dayMark = dayFilter !== "all" ? row.byDay?.[dayFilter] : null;
                 const attended = Boolean(dayMark?.attended);
                 const overrideKey = `${row.userId}:${dayFilter}:on`;
@@ -446,6 +480,15 @@ export function ConferenceAdminAttendanceTab({ conferenceId }) {
             </p>
           ) : null}
         </div>
+        <TablePagination
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPageChange={setPage}
+        />
+        </>
       )}
 
       <Modal

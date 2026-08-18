@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { requirePaperReviewAccess } from "@/lib/auth/guards";
+import { authorizePaperReviewAccess } from "@/lib/auth/guards";
 import { reviewPaperSubmission } from "@/lib/papers/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function POST(request, { params }) {
   const { id, submissionId } = await params;
-  const session = await requirePaperReviewAccess(id, submissionId);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizePaperReviewAccess(id, submissionId);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const body = await request.json();

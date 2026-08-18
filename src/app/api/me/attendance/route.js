@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
+import { jsonNoStore } from "@/lib/http/no-store";
 import {
   getAllAttendanceSummaries,
   getRunningAttendanceConferences,
@@ -8,7 +8,7 @@ import {
 export async function GET() {
   const session = await requireSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
   const [conferences, history] = await Promise.all([
@@ -16,5 +16,5 @@ export async function GET() {
     getAllAttendanceSummaries(session.user.id),
   ]);
 
-  return NextResponse.json({ conferences, history });
+  return jsonNoStore({ conferences, history });
 }

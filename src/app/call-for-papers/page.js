@@ -4,8 +4,6 @@ import { buildOpenCalls } from "@/lib/conferences/service";
 import { getPublishedConferencesCached } from "@/lib/conferences/public-cache";
 import { formatDeadlineDate } from "@/lib/conferences/utils";
 
-export const revalidate = 60;
-
 export const metadata = {
   title: "Call for Papers | NCDC Conference Platform",
   description: "Browse open calls for papers across NCDC-hosted conferences.",

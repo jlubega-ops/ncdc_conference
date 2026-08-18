@@ -133,6 +133,19 @@ export async function DELETE(request, { params }) {
   const email = registration.user.email.toLowerCase();
   const userId = registration.userId;
 
+  const giftCount = await prisma.conferenceGiftIssuance.count({
+    where: { conferenceId: id, userId },
+  });
+  if (giftCount > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "This person was issued gifts and cannot be removed. Gift records must be kept.",
+      },
+      { status: 409 },
+    );
+  }
+
   await prisma.$transaction([
     prisma.conferenceAttendance.deleteMany({
       where: { conferenceId: id, userId },
@@ -141,9 +154,6 @@ export async function DELETE(request, { params }) {
       where: { conferenceId: id, userId },
     }),
     prisma.conferenceCertificate.deleteMany({
-      where: { conferenceId: id, userId },
-    }),
-    prisma.conferenceGiftIssuance.deleteMany({
       where: { conferenceId: id, userId },
     }),
     prisma.paperSubmission.deleteMany({

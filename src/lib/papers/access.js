@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isCfpOpen } from "@/lib/conferences/registrable";
-import { getPublishedConferenceBySlug } from "@/lib/conferences/service";
+import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
 import { canManageConference } from "@/lib/auth/conference-access";
 
 /**
@@ -29,7 +29,7 @@ export async function requireApprovedRegistration(userId, conferenceId) {
  * @param {string} slug
  */
 export async function getConferenceContextForPapers(slug) {
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) return null;
   return { conference, cfpOpen: isCfpOpen(conference) };
 }

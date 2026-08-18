@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { jsonNoStore } from "@/lib/http/no-store";
 
 export async function GET() {
   const session = await requireSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
   const rows = await prisma.conferenceRegistration.findMany({
@@ -26,7 +27,7 @@ export async function GET() {
     orderBy: { registeredAt: "desc" },
   });
 
-  return NextResponse.json({
+  return jsonNoStore({
     registrations: rows.map((row) => ({
       id: row.id,
       status: row.status,

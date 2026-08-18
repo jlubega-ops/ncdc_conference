@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceManager } from "@/lib/auth/guards";
+import { authorizeConferenceManager } from "@/lib/auth/guards";
 
 export async function GET(request) {
-  const session = await requireConferenceManager();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceManager();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
   const { searchParams } = new URL(request.url);

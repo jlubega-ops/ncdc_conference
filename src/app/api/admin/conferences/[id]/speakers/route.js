@@ -6,6 +6,7 @@ import {
 } from "@/lib/conference-content/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { revalidateConferenceCacheById } from "@/lib/conferences/public-cache";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
@@ -16,7 +17,10 @@ export async function GET(_request, { params }) {
   const session = access.session;
 
   const speakers = await getConferenceSpeakers(id);
-  return NextResponse.json({ speakers });
+  return NextResponse.json(
+    { speakers },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 export async function PATCH(request, { params }) {
@@ -40,7 +44,8 @@ export async function PATCH(request, { params }) {
       conferenceId: id,
       metadata: { speakerCount: speakers.length },
     });
-    return NextResponse.json({ speakers });
+    await revalidateConferenceCacheById(id);
+    return NextResponse.json({ speakers }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not update speakers.";
     return NextResponse.json({ error: message }, { status: 400 });

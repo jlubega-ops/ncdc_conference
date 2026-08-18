@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { buildProfilePayload, getProfileFromUser } from "@/lib/users/profile";
 import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
 import { rememberOrganisation } from "@/lib/organisations/service";
+import { adoptUserForConferencePerson } from "@/lib/users/merge-conference-person";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -136,6 +137,7 @@ export async function addAttendeeByAdmin({
   comment = null,
   organisation = null,
   forceDuplicate = false,
+  createdById = null,
 }) {
   const first = normalizeNamePart(firstName);
   const last = normalizeNamePart(lastName);
@@ -172,10 +174,6 @@ export async function addAttendeeByAdmin({
   // forceDuplicate is ignored for conference-registration duplicates (never create a second row).
   void forceDuplicate;
 
-  if (!emailProvided) {
-    normalizedEmail = placeholderEmail();
-  }
-
   const organisationName = String(organisation || "").trim();
   const profile = buildProfilePayload({
     firstName: first,
@@ -185,12 +183,20 @@ export async function addAttendeeByAdmin({
   const fullName = profile.fullName || `${first} ${last}`;
   const adminComment = String(comment || "").trim() || null;
 
-  let user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    include: { roles: true },
+  const adopted = await adoptUserForConferencePerson({
+    conferenceId,
+    email: emailProvided ? normalizedEmail : null,
+    firstName: first,
+    lastName: last,
+    institution: organisationName,
   });
 
+  let user = adopted.user;
+
   if (!user) {
+    if (!emailProvided) {
+      normalizedEmail = placeholderEmail();
+    }
     user = await prisma.user.create({
       data: {
         email: normalizedEmail,
@@ -203,6 +209,9 @@ export async function addAttendeeByAdmin({
       include: { roles: true },
     });
   } else {
+    if (!emailProvided) {
+      normalizedEmail = user.email;
+    }
     const existingProfile = getProfileFromUser(user);
     profile.institution = organisationName || existingProfile.institution || "";
     await prisma.user.update({
@@ -227,6 +236,28 @@ export async function addAttendeeByAdmin({
     }
   }
 
+  const existingReg = await prisma.conferenceRegistration.findUnique({
+    where: { conferenceId_userId: { conferenceId, userId: user.id } },
+  });
+  if (existingReg) {
+    return {
+      needsConfirmation: true,
+      allowForce: false,
+      duplicates: [
+        {
+          userId: user.id,
+          email: user.email,
+          name: fullName,
+          registrationId: existingReg.id,
+          status: existingReg.status,
+          match: "existing",
+        },
+      ],
+      message:
+        "This person is already registered for this conference. Open their existing registration instead of adding them again.",
+    };
+  }
+
   const formData = {
     ...profile,
     email: emailProvided ? normalizedEmail : "",
@@ -242,6 +273,8 @@ export async function addAttendeeByAdmin({
       formData,
       adminNotes: adminComment,
       reviewedAt: new Date(),
+      registeredById: createdById || null,
+      registeredBySource: "ADMIN",
     },
     include: {
       user: {
@@ -336,27 +369,38 @@ export async function assignRepresentativeByAdmin({
     };
   }
 
-  if (!emailProvided) {
-    const existingByName = duplicates.find((d) => d.match === "name");
-    if (existingByName) {
-      normalizedEmail = existingByName.email;
-    } else {
-      normalizedEmail = placeholderEmail();
-    }
-  }
-
   const profile = buildProfilePayload({
     firstName: first,
     lastName: last,
   });
   const fullName = profile.fullName || `${first} ${last}`;
 
-  let repUser = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    include: { roles: true },
+  const adopted = await adoptUserForConferencePerson({
+    conferenceId,
+    email: emailProvided ? normalizedEmail : null,
+    firstName: first,
+    lastName: last,
   });
 
+  let repUser = adopted.user;
+
   if (!repUser) {
+    if (!emailProvided) {
+      const existingByName = duplicates.find((d) => d.match === "name");
+      if (existingByName) {
+        normalizedEmail = existingByName.email;
+        repUser = await prisma.user.findUnique({
+          where: { email: normalizedEmail },
+          include: { roles: true },
+        });
+      }
+    }
+  }
+
+  if (!repUser) {
+    if (!emailProvided) {
+      normalizedEmail = placeholderEmail();
+    }
     repUser = await prisma.user.create({
       data: {
         email: normalizedEmail,
@@ -415,6 +459,8 @@ export async function assignRepresentativeByAdmin({
           addedAsRepresentative: true,
         },
         reviewedAt: new Date(),
+        registeredById: createdById || null,
+        registeredBySource: "ADMIN",
       },
     });
 

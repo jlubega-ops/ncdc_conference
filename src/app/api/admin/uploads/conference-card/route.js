@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
-import { requireConferenceManager } from "@/lib/auth/guards";
+import { authorizeConferenceManager } from "@/lib/auth/guards";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 import { savePublicUpload } from "@/lib/storage/public-uploads";
@@ -12,10 +12,11 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function POST(request) {
-  const session = await requireConferenceManager();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceManager();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const formData = await request.formData();

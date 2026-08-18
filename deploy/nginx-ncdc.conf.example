@@ -31,6 +31,9 @@ server {
         try_files $uri @next;
     }
 
+    # Do not add proxy_cache here. Attendance, certificates, and admin APIs must
+    # stay live. Shared conference HTML is cached inside Next.js and dropped when
+    # an admin saves — nginx does not need a config change for that.
     location /api/ {
         proxy_pass http://127.0.0.1:3050;
         proxy_http_version 1.1;

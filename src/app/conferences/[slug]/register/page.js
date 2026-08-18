@@ -4,7 +4,8 @@ import { ConferenceRegistrationForm } from "@/components/conference/ConferenceRe
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
 import { Button } from "@/components/ui/Button";
 import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
-import { getPublishedConferenceBySlug, isInviteOnlyConference } from "@/lib/conferences/service";
+import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
+import { isInviteOnlyConference } from "@/lib/conferences/service";
 import {
   allowsPublicRegistration,
   isRegistrableConference,
@@ -18,7 +19,7 @@ import { OrganiserBrandSetter } from "@/components/layout/OrganiserBrandProvider
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference || isInviteOnlyConference(conference)) {
     return { title: "Conference Not Found" };
   }
@@ -33,7 +34,7 @@ export default async function ConferenceRegisterPage({ params }) {
   await redirectIfAuthenticated();
 
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
 
   if (!conference || isInviteOnlyConference(conference)) notFound();
 

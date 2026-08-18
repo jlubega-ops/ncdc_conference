@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { findAttendanceMarks } from "@/lib/attendance/db";
-import { normalizeConferenceDays } from "@/lib/attendance/utils";
+import { getZonedDateTimeParts, normalizeConferenceDays } from "@/lib/attendance/utils";
 import { normalizeSpeaker } from "@/lib/conferences/utils";
 import { getProfileFromUser } from "@/lib/users/profile";
+import { formatIssuedByLabel, formatRegisteredByLabel } from "@/lib/users/actor";
 import {
+  GIFT_CATEGORIES,
   GIFT_CATEGORY_PARTICIPANTS,
   countIssuedGiftProgress,
   describeIssuedGiftItems,
@@ -14,6 +16,10 @@ import {
   sumIssuedItemCounts,
   userGiftRecipientKey,
 } from "@/lib/gifts/settings";
+
+function giftCategoryLabel(category) {
+  return GIFT_CATEGORIES.find((c) => c.value === category)?.label || category;
+}
 
 function emptyItemCounts(catalog) {
   return (Array.isArray(catalog) ? catalog : []).map((item) => {
@@ -53,6 +59,8 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
         byCategory: [],
       },
       days: totalDays,
+      todayKey: null,
+      todayDayIndex: null,
       category: GIFT_CATEGORY_PARTICIPANTS,
       conference: { id: conference.id, title: conference.title, slug: conference.slug },
     };
@@ -63,9 +71,15 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
       ? opts.category
       : enabledCategories[0]?.value || GIFT_CATEGORY_PARTICIPANTS;
 
+  const todayKey = getZonedDateTimeParts(new Date()).dateKey;
+  const todayDay = days.find((d) => d.date === todayKey) ?? null;
+
   const [issuances, registrations, accessKeys] = await Promise.all([
     prisma.conferenceGiftIssuance.findMany({
       where: { conferenceId },
+      include: {
+        issuedBy: { select: { id: true, name: true, email: true } },
+      },
     }),
     prisma.conferenceRegistration.findMany({
       where: { conferenceId, status: { in: ["CONFIRMED", "PENDING"] } },
@@ -73,6 +87,7 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
         user: {
           select: { id: true, email: true, name: true, profileData: true },
         },
+        registeredBy: { select: { id: true, name: true, email: true } },
       },
       orderBy: { registeredAt: "asc" },
     }),
@@ -106,8 +121,10 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
       : [];
 
   const attendedByUser = new Map();
+  const attendedTodayByUser = new Set();
   for (const mark of marks) {
     attendedByUser.set(mark.userId, (attendedByUser.get(mark.userId) ?? 0) + 1);
+    if (mark.dayDate === todayKey) attendedTodayByUser.add(mark.userId);
   }
 
   const giftOnlyUserIds = [];
@@ -175,6 +192,10 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
           isIssued: progress.got > 0,
           isFullyIssued: progress.total > 0 && progress.got >= progress.total,
           issuedAt: issuance?.issuedAt ?? null,
+          issuedByName: formatIssuedByLabel(issuance?.issuedBy),
+          registeredByLabel: formatRegisteredByLabel(reg),
+          categoryLabel: giftCategoryLabel(cat),
+          attendedToday: attendedTodayByUser.has(reg.userId),
         };
       });
 
@@ -214,6 +235,10 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
           isIssued: progress.got > 0,
           isFullyIssued: progress.total > 0 && progress.got >= progress.total,
           issuedAt: issuance.issuedAt ?? null,
+          issuedByName: formatIssuedByLabel(issuance.issuedBy),
+          registeredByLabel: "—",
+          categoryLabel: giftCategoryLabel(cat),
+          attendedToday: false,
         });
       }
 
@@ -249,6 +274,11 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
           isIssued: progress.got > 0,
           isFullyIssued: progress.total > 0 && progress.got >= progress.total,
           issuedAt: issuance?.issuedAt ?? null,
+          issuedByName: formatIssuedByLabel(issuance?.issuedBy),
+          registeredByLabel: "—",
+          categoryLabel: giftCategoryLabel(cat),
+          attendedToday: false,
+          isConferenceRegistered: false,
         };
       });
   }
@@ -304,9 +334,11 @@ export async function getConferenceGiftsAdminData(conferenceId, opts = {}) {
     category,
     catalog: settings.items,
     rostersByCategory,
-    roster: rostersByCategory[category] ?? [],
+    roster: allRosterRows,
     report: { overall, byCategory },
     days: totalDays,
+    todayKey,
+    todayDayIndex: todayDay?.dayIndex ?? null,
     conference: { id: conference.id, title: conference.title, slug: conference.slug },
   };
 }
@@ -362,6 +394,8 @@ export function giftsReportToCsv(data) {
     "Status",
     "Items issued",
     "Issued at",
+    "Issued by",
+    "Registered by",
     ...catalog.map((item) => item.name),
   ];
   lines.push(header.map(esc).join(","));
@@ -389,6 +423,8 @@ export function giftsReportToCsv(data) {
           status,
           itemsLabel,
           row.issuedAt ? new Date(row.issuedAt).toISOString() : "",
+          row.issuedByName || "",
+          row.registeredByLabel || "",
           ...catalog.map((item) => Number(row.issuedItems?.[item.id] ?? 0)),
         ]
           .map(esc)
@@ -398,6 +434,195 @@ export function giftsReportToCsv(data) {
   }
 
   return lines.join("\n");
+}
+
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/**
+ * Summary of gifts issued, grouped by the admin who issued them.
+ * @param {string} conferenceId
+ */
+export async function getGiftIssuersReport(conferenceId) {
+  const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
+  if (!conference) throw new Error("Conference not found.");
+
+  const settings = normalizeGiftsSettings(conference.giftsSettings);
+  const catalog = settings.items ?? [];
+  const issuances = await prisma.conferenceGiftIssuance.findMany({
+    where: { conferenceId },
+    include: {
+      issuedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  /** @type {Map<string, any>} */
+  const byIssuer = new Map();
+  for (const row of issuances) {
+    const key = row.issuedById || "_unknown";
+    if (!byIssuer.has(key)) {
+      byIssuer.set(key, {
+        issuerId: row.issuedById,
+        name: formatIssuedByLabel(row.issuedBy) === "—" ? "Unknown" : formatIssuedByLabel(row.issuedBy),
+        email: row.issuedBy?.email && !row.issuedBy.email.endsWith("@ncdc.local")
+          ? row.issuedBy.email
+          : null,
+        recipientCount: 0,
+        itemCounts: Object.fromEntries(catalog.map((item) => [item.id, 0])),
+        totalItems: 0,
+      });
+    }
+    const acc = byIssuer.get(key);
+    acc.recipientCount += 1;
+    const items = row.items && typeof row.items === "object" ? row.items : {};
+    for (const [itemId, qty] of Object.entries(items)) {
+      const n = Number(qty) || 0;
+      if (acc.itemCounts[itemId] !== undefined) acc.itemCounts[itemId] += n;
+      acc.totalItems += n;
+    }
+  }
+
+  const issuers = [...byIssuer.values()]
+    .map((row) => ({
+      issuerId: row.issuerId,
+      name: row.name,
+      email: row.email,
+      recipientCount: row.recipientCount,
+      totalItems: row.totalItems,
+      items: catalog.map((item) => ({
+        id: item.id,
+        name: item.name,
+        count: row.itemCounts[item.id] || 0,
+      })),
+    }))
+    .sort((a, b) => b.totalItems - a.totalItems || a.name.localeCompare(b.name));
+
+  const totals = {
+    admins: issuers.length,
+    recipientCount: issuers.reduce((sum, row) => sum + row.recipientCount, 0),
+    totalItems: issuers.reduce((sum, row) => sum + row.totalItems, 0),
+    items: catalog.map((item) => ({
+      id: item.id,
+      name: item.name,
+      count: issuers.reduce((sum, row) => sum + (row.items.find((i) => i.id === item.id)?.count || 0), 0),
+    })),
+  };
+
+  return {
+    conference: { id: conference.id, title: conference.title, slug: conference.slug },
+    catalog,
+    issuers,
+    totals,
+  };
+}
+
+/**
+ * @param {Awaited<ReturnType<typeof getGiftIssuersReport>>} data
+ */
+export function giftIssuersReportToCsv(data) {
+  const lines = [];
+  lines.push("Gifts issued by admin");
+  lines.push([csvEscape("Conference"), csvEscape(data.conference?.title || "")].join(","));
+  lines.push("");
+
+  const catalog = data.catalog ?? [];
+  const header = [
+    "Admin",
+    "Email",
+    "Recipients issued",
+    ...catalog.map((item) => item.name),
+    "Total items",
+  ];
+  lines.push(header.map(csvEscape).join(","));
+
+  for (const row of data.issuers ?? []) {
+    lines.push(
+      [
+        row.name,
+        row.email || "",
+        row.recipientCount,
+        ...catalog.map((item) => row.items.find((i) => i.id === item.id)?.count ?? 0),
+        row.totalItems,
+      ]
+        .map(csvEscape)
+        .join(","),
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    [
+      "Total",
+      "",
+      data.totals?.recipientCount ?? 0,
+      ...(data.totals?.items ?? []).map((item) => item.count),
+      data.totals?.totalItems ?? 0,
+    ]
+      .map(csvEscape)
+      .join(","),
+  );
+
+  return lines.join("\n");
+}
+
+/**
+ * When issuing gifts to a registered attendee, optionally mark today's attendance.
+ * @param {{
+ *   conferenceId: string;
+ *   userId: string | null;
+ *   isConferenceRegistered: boolean;
+ *   attendanceAction?: string | null;
+ *   markedById?: string | null;
+ * }} params
+ */
+export async function maybeMarkAttendanceForGiftIssue({
+  conferenceId,
+  userId,
+  isConferenceRegistered,
+  attendanceAction,
+  markedById = null,
+}) {
+  if (attendanceAction !== "issue_and_mark" || !userId || !isConferenceRegistered) {
+    return null;
+  }
+
+  const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
+  if (!conference) return null;
+
+  const registration = await prisma.conferenceRegistration.findUnique({
+    where: { conferenceId_userId: { conferenceId, userId } },
+  });
+  if (!registration || registration.status !== "CONFIRMED") {
+    return null;
+  }
+
+  const days = normalizeConferenceDays(conference.conferenceDays);
+  const todayKey = getZonedDateTimeParts(new Date()).dateKey;
+  const day = days.find((d) => d.date === todayKey);
+  if (!day) return null;
+
+  return prisma.conferenceAttendance.upsert({
+    where: {
+      conferenceId_userId_dayDate: {
+        conferenceId,
+        userId,
+        dayDate: todayKey,
+      },
+    },
+    update: {
+      markedById: markedById || undefined,
+    },
+    create: {
+      conferenceId,
+      userId,
+      dayDate: todayKey,
+      dayIndex: day.dayIndex,
+      markedById: markedById || null,
+    },
+  });
 }
 
 /**
@@ -542,6 +767,21 @@ export async function addGiftRecipientAndIssue({
   }
 
   let userId = registered?.userId || null;
+
+  if (!userId) {
+    const { adoptUserForConferencePerson } = await import(
+      "@/lib/users/merge-conference-person"
+    );
+    const adopted = await adoptUserForConferencePerson({
+      conferenceId,
+      email: emailProvided ? normalizedEmail : null,
+      firstName: first,
+      lastName: last,
+    });
+    if (adopted.user) {
+      userId = adopted.user.id;
+    }
+  }
 
   if (!userId) {
     if (!emailProvided) {

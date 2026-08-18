@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { jsonNoStore } from "@/lib/http/no-store";
 import { mapPaperForAuthor } from "@/lib/papers/map";
 
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
     orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
   });
 
-  return NextResponse.json({
+  return jsonNoStore({
     papers: rows.map(mapPaperForAuthor),
   });
 }

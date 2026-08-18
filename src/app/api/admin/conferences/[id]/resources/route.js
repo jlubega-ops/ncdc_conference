@@ -9,6 +9,7 @@ import {
 import { RESOURCE_TYPES } from "@/lib/conference-content/constants";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { revalidateConferenceCacheById } from "@/lib/conferences/public-cache";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,10 @@ export async function GET(request, { params }) {
   }
 
   const resources = await listConferenceResources(id, type);
-  return NextResponse.json({ resources });
+  return NextResponse.json(
+    { resources },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 export async function POST(request, { params }) {
@@ -63,6 +67,7 @@ export async function POST(request, { params }) {
       conferenceId: id,
       metadata: { type },
     });
+    await revalidateConferenceCacheById(id);
     return NextResponse.json({ resource });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not add resource.";
@@ -96,6 +101,7 @@ export async function PATCH(request, { params }) {
       conferenceId: id,
       metadata: { type: resource.type },
     });
+    await revalidateConferenceCacheById(id);
     return NextResponse.json({ resource });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not update resource.";
@@ -127,6 +133,7 @@ export async function DELETE(request, { params }) {
       resourceId,
       conferenceId: id,
     });
+    await revalidateConferenceCacheById(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not delete resource.";

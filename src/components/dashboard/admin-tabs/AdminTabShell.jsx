@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatAdminDateTime } from "@/lib/conferences/utils";
 import { AdminListFilters } from "./AdminListFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { paginateRows } from "@/lib/table/paginate";
 
 /**
  * @param {{
@@ -32,6 +34,7 @@ export function AdminDataListTab({
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +79,13 @@ export function AdminDataListTab({
     });
   }, [items, search, statusFilter, getSearchText]);
 
-  if (loading) {
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const paged = useMemo(() => paginateRows(filtered, page, 25), [filtered, page]);
+
+  if (loading && items.length === 0) {
     return <p className="text-sm text-muted-foreground">Loading {label.toLowerCase()}…</p>;
   }
 
@@ -103,29 +112,39 @@ export function AdminDataListTab({
           No results match your filters.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-background">
-              <tr>
-                {columns.map((col) => (
-                  <th
-                    key={col.key}
-                    scope="col"
-                    className={cn(
-                      "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
-                      col.className,
-                    )}
-                  >
-                    {col.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-surface">
-              {filtered.map((item) => renderRow(item))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead className="bg-background">
+                <tr>
+                  {columns.map((col) => (
+                    <th
+                      key={col.key}
+                      scope="col"
+                      className={cn(
+                        "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                        col.className,
+                      )}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-surface">
+                {paged.rows.map((item) => renderRow(item))}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination
+            page={paged.page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            start={paged.start}
+            end={paged.end}
+            onPageChange={setPage}
+          />
+        </>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isSuperadminUser } from "@/lib/auth/conference-access";
-import { authorizeConferenceAccess, requireSuperadminCapability } from "@/lib/auth/guards";
+import { authorizeConferenceAccess, authorizeSuperadminCapability } from "@/lib/auth/guards";
 import {
   assignConferenceAdmin,
   createAndAssignConferenceAdmin,
@@ -28,10 +28,11 @@ export async function GET(_request, { params }) {
 
 export async function POST(request, { params }) {
   const { id: conferenceId } = await params;
-  const session = await requireSuperadminCapability();
-  if (!session) {
-    return NextResponse.json({ error: "Only superadmins can assign conference admins." }, { status: 403 });
+  const access = await authorizeSuperadminCapability();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const conference = await prisma.conference.findUnique({
     where: { id: conferenceId },
@@ -125,10 +126,11 @@ export async function POST(request, { params }) {
 
 export async function DELETE(request, { params }) {
   const { id: conferenceId } = await params;
-  const session = await requireSuperadminCapability();
-  if (!session) {
-    return NextResponse.json({ error: "Only superadmins can remove conference admins." }, { status: 403 });
+  const access = await authorizeSuperadminCapability();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const userId = new URL(request.url).searchParams.get("userId")?.trim();
   if (!userId) {

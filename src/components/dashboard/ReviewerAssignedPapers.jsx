@@ -5,6 +5,8 @@ import { PaperSubmissionReviewModal } from "@/components/dashboard/admin-tabs/Pa
 import { formatAdminDate } from "@/components/dashboard/admin-tabs/AdminTabShell";
 import { PAPER_STATUS_LABELS, PAPER_STATUS_STYLES } from "@/lib/papers/constants";
 import { cn } from "@/lib/cn";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { paginateRows } from "@/lib/table/paginate";
 
 export function ReviewerAssignedPapers() {
   const [papers, setPapers] = useState([]);
@@ -12,17 +14,13 @@ export function ReviewerAssignedPapers() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return papers;
     return papers.filter((row) => {
-      const text = [
-        row.title,
-        row.conference?.title,
-        row.user?.email,
-        row.status,
-      ]
+      const text = [row.title, row.conference?.title, row.user?.email, row.status]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -30,19 +28,28 @@ export function ReviewerAssignedPapers() {
     });
   }, [papers, search]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const paged = useMemo(() => paginateRows(filtered, page, 25), [filtered, page]);
+
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const res = await fetch("/api/me/reviewer/papers");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load assigned papers.");
       setPapers(data.papers ?? []);
+      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load assigned papers.");
-      setPapers([]);
+      if (!silent) setPapers([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -51,22 +58,14 @@ export function ReviewerAssignedPapers() {
   }, [load]);
 
   async function handleUpdated() {
-    await load();
-    if (selected) {
-      const res = await fetch("/api/me/reviewer/papers");
-      const data = await res.json();
-      if (res.ok) {
-        const updated = (data.papers ?? []).find((p) => p.id === selected.id);
-        if (updated) setSelected(updated);
-      }
-    }
+    await load({ silent: true });
   }
 
-  if (loading) {
+  if (loading && papers.length === 0) {
     return <p className="text-sm text-muted-foreground">Loading assigned papers…</p>;
   }
 
-  if (error) {
+  if (error && papers.length === 0) {
     return <p className="text-sm text-error">{error}</p>;
   }
 
@@ -99,7 +98,7 @@ export function ReviewerAssignedPapers() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-background">
-            {filtered.map((row) => (
+            {paged.rows.map((row) => (
               <tr
                 key={row.id}
                 className="cursor-pointer transition-colors hover:bg-primary-light/30"
@@ -126,6 +125,14 @@ export function ReviewerAssignedPapers() {
           </tbody>
         </table>
       </div>
+      <TablePagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPageChange={setPage}
+      />
 
       <PaperSubmissionReviewModal
         open={Boolean(selected)}

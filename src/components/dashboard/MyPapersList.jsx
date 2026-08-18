@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -13,6 +13,8 @@ import { PAPER_STATUS_LABELS, PAPER_STATUS_STYLES } from "@/lib/papers/constants
 import { formatAdminDate } from "@/components/dashboard/admin-tabs/AdminTabShell";
 import { PaperSubmissionHistory } from "@/components/papers/PaperSubmissionHistory";
 import { toast } from "react-toastify";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { paginateRows } from "@/lib/table/paginate";
 
 export function MyPapersList() {
   const [papers, setPapers] = useState([]);
@@ -23,21 +25,27 @@ export function MyPapersList() {
   const [resubmitAbstract, setResubmitAbstract] = useState("");
   const [resubmitFile, setResubmitFile] = useState(null);
   const [resubmitting, setResubmitting] = useState(false);
+  const [page, setPage] = useState(1);
   const fileInputRef = useRef(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const paged = useMemo(() => paginateRows(papers, page, 25), [papers, page]);
+
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const res = await fetch("/api/me/papers");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load papers.");
       setPapers(data.papers ?? []);
+      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load papers.");
-      setPapers([]);
+      if (!silent) setPapers([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -85,7 +93,7 @@ export function MyPapersList() {
       if (!res.ok) throw new Error(data.error || "Could not resubmit paper.");
       toast.success("Paper resubmitted.");
       setSelected(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not resubmit paper.");
     } finally {
@@ -93,7 +101,7 @@ export function MyPapersList() {
     }
   }
 
-  if (loading) {
+  if (loading && papers.length === 0) {
     return <p className="text-sm text-muted-foreground">Loading your papers…</p>;
   }
 
@@ -126,7 +134,7 @@ export function MyPapersList() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-background">
-            {papers.map((paper) => (
+            {paged.rows.map((paper) => (
               <tr
                 key={paper.id}
                 className="cursor-pointer transition-colors hover:bg-primary-light/30"
@@ -167,6 +175,14 @@ export function MyPapersList() {
           </tbody>
         </table>
       </div>
+      <TablePagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPageChange={setPage}
+      />
 
       <Modal
         open={Boolean(selected)}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { TablePagination } from "@/components/ui/TablePagination";
 
 const ACTION_OPTIONS = Object.values(ACTIVITY_ACTIONS).sort();
 
@@ -22,11 +23,25 @@ export function ActivityLogAdmin() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [action, setAction] = useState("");
   const [successFilter, setSuccessFilter] = useState("all");
   const [offset, setOffset] = useState(0);
   const limit = 50;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setOffset(0);
+      setQ(qInput.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [qInput]);
+
+  const page = Math.floor(offset / limit) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const start = total === 0 ? 0 : offset + 1;
+  const end = Math.min(total, offset + rows.length);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,11 +86,8 @@ export function ActivityLogAdmin() {
         <div className="min-w-[200px] flex-1">
           <Input
             label="Search"
-            value={q}
-            onChange={(e) => {
-              setOffset(0);
-              setQ(e.target.value);
-            }}
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
             placeholder="Actor, action, description…"
           />
         </div>
@@ -117,12 +129,7 @@ export function ActivityLogAdmin() {
         </Button>
       </div>
 
-      <p className="text-sm text-foreground/80">
-        Showing {rows.length} of {total} entries
-        {offset > 0 ? ` (offset ${offset})` : ""}.
-      </p>
-
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">Loading activity log…</p>
       ) : rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-foreground/80">
@@ -184,24 +191,14 @@ export function ActivityLogAdmin() {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={offset <= 0 || loading}
-          onClick={() => setOffset((o) => Math.max(0, o - limit))}
-        >
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={offset + limit >= total || loading}
-          onClick={() => setOffset((o) => o + limit)}
-        >
-          Next
-        </Button>
-      </div>
+      <TablePagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        start={start}
+        end={end}
+        onPageChange={(next) => setOffset((next - 1) * limit)}
+      />
     </div>
   );
 }

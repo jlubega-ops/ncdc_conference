@@ -2,11 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ConferenceMyPapers } from "@/components/conference/ConferenceMyPapers";
 import { getSessionRecord } from "@/lib/auth/session";
-import { getPublishedConferenceBySlug } from "@/lib/conferences/service";
+import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) return { title: "Conference Not Found" };
   return {
     title: `My papers — ${conference.title} | NCDC Conference`,
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }) {
 
 export default async function ConferenceMyPapersPage({ params }) {
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-12 text-center">

@@ -15,6 +15,39 @@ export async function requireRoles(allowedRoles) {
   return session;
 }
 
+/**
+ * API role check with distinct 401 (signed out) vs 403 (wrong role).
+ * @param {string[]} allowedRoles
+ * @returns {Promise<{ ok: true, session: any } | { ok: false, status: 401|403, error: string, session: null }>}
+ */
+export async function authorizeRoles(allowedRoles) {
+  const session = await getCurrentSession();
+  if (!session) {
+    return { ok: false, status: 401, error: "Sign in required.", session: null };
+  }
+  if (!allowedRoles.includes(session.activeRole)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "You do not have permission for this action.",
+      session: null,
+    };
+  }
+  return { ok: true, session };
+}
+
+export async function authorizeSuperadmin() {
+  return authorizeRoles(["SUPERADMIN"]);
+}
+
+export async function authorizeConferenceManager() {
+  return authorizeRoles(["SUPERADMIN", "CONFERENCE_ADMIN"]);
+}
+
+export async function authorizeReviewer() {
+  return authorizeRoles(["REVIEWER"]);
+}
+
 export async function requireConferenceManager() {
   return requireRoles(["SUPERADMIN", "CONFERENCE_ADMIN"]);
 }
@@ -88,10 +121,24 @@ export async function requireSuperadmin() {
 
 /** Any account with SUPERADMIN role (even if active role is different). */
 export async function requireSuperadminCapability() {
+  const result = await authorizeSuperadminCapability();
+  return result.ok ? result.session : null;
+}
+
+export async function authorizeSuperadminCapability() {
   const session = await getCurrentSession();
-  if (!session) return null;
-  if (!isSuperadminUser(session)) return null;
-  return session;
+  if (!session) {
+    return { ok: false, status: 401, error: "Sign in required.", session: null };
+  }
+  if (!isSuperadminUser(session)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "You do not have permission for this action.",
+      session: null,
+    };
+  }
+  return { ok: true, session };
 }
 
 /**
@@ -132,9 +179,22 @@ export async function requireReviewer() {
  * @param {string} submissionId
  */
 export async function requirePaperReviewAccess(conferenceId, submissionId) {
+  const result = await authorizePaperReviewAccess(conferenceId, submissionId);
+  return result.ok ? result.session : null;
+}
+
+/**
+ * @param {string} conferenceId
+ * @param {string} submissionId
+ */
+export async function authorizePaperReviewAccess(conferenceId, submissionId) {
   const session = await getCurrentSession();
-  if (!session) return null;
+  if (!session) {
+    return { ok: false, status: 401, error: "Sign in required.", session: null };
+  }
   const allowed = await canReviewPaperSubmission(session, conferenceId, submissionId);
-  if (!allowed) return null;
-  return session;
+  if (!allowed) {
+    return { ok: false, status: 403, error: "Forbidden", session: null };
+  }
+  return { ok: true, session };
 }

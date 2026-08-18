@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { LIKERT_LABELS } from "@/lib/feedback/questions";
 import { formatAdminDate } from "./AdminTabShell";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { paginateRows } from "@/lib/table/paginate";
 
 /**
  * @param {{ conferenceId: string }} props
@@ -16,26 +18,43 @@ export function ConferenceAdminFeedbackTab({ conferenceId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [view, setView] = useState("overview");
+  const [page, setPage] = useState(1);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const res = await fetch(`/api/admin/conferences/${conferenceId}/feedback`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load feedback.");
       setReport(data);
+      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load feedback.");
-      setReport(null);
+      if (!silent) setReport(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [conferenceId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [view]);
+
+  const participationPaged = useMemo(
+    () => paginateRows(report?.participation ?? [], page, 25),
+    [report?.participation, page],
+  );
+  const submissionsPaged = useMemo(
+    () => paginateRows(report?.submissions ?? [], page, 25),
+    [report?.submissions, page],
+  );
 
   function download(format) {
     window.open(
@@ -44,10 +63,10 @@ export function ConferenceAdminFeedbackTab({ conferenceId }) {
     );
   }
 
-  if (loading) {
+  if (loading && !report) {
     return <p className="text-sm text-muted-foreground">Loading feedback report…</p>;
   }
-  if (error || !report) {
+  if (!report) {
     return <p className="text-sm text-error">{error || "No feedback data."}</p>;
   }
 
@@ -78,7 +97,7 @@ export function ConferenceAdminFeedbackTab({ conferenceId }) {
             <Icon icon={FileText} size="sm" />
             PDF
           </Button>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => load({ silent: true })}>
             <Icon icon={Download} size="sm" />
             Refresh
           </Button>
@@ -206,78 +225,98 @@ export function ConferenceAdminFeedbackTab({ conferenceId }) {
       ) : null}
 
       {view === "participation" ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Attendee</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Days</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.participation.map((p) => (
-                <tr key={p.userId} className="border-t border-border">
-                  <td className="px-4 py-3">{p.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.email}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        "rounded-md px-2 py-0.5 text-xs font-medium",
-                        p.hasAnyFeedback
-                          ? "bg-primary-light text-primary"
-                          : "bg-amber-50 text-amber-800",
-                      )}
-                    >
-                      {p.hasAnyFeedback ? "Submitted" : "Not yet"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {p.daysSubmitted}/{p.daysTotal}
-                  </td>
+        <div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="min-w-full text-sm">
+              <thead className="bg-neutral-50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3">Attendee</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Days</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {participationPaged.rows.map((p) => (
+                  <tr key={p.userId} className="border-t border-border">
+                    <td className="px-4 py-3">{p.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{p.email}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          "rounded-md px-2 py-0.5 text-xs font-medium",
+                          p.hasAnyFeedback
+                            ? "bg-primary-light text-primary"
+                            : "bg-amber-50 text-amber-800",
+                        )}
+                      >
+                        {p.hasAnyFeedback ? "Submitted" : "Not yet"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {p.daysSubmitted}/{p.daysTotal}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination
+            page={participationPaged.page}
+            totalPages={participationPaged.totalPages}
+            total={participationPaged.total}
+            start={participationPaged.start}
+            end={participationPaged.end}
+            onPageChange={setPage}
+          />
         </div>
       ) : null}
 
       {view === "submissions" ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="min-w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Submitter</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Target</th>
-                <th className="px-4 py-3">Rating</th>
-                <th className="px-4 py-3">Comment</th>
-                <th className="px-4 py-3">When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.submissions.map((row) => (
-                <tr key={row.id} className="border-t border-border">
-                  <td className="px-4 py-3">
-                    <p className="font-medium">{row.user?.name}</p>
-                    {row.user?.email ? (
-                      <p className="text-xs text-muted-foreground">{row.user.email}</p>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">{row.feedbackType}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{row.targetKey}</td>
-                  <td className="px-4 py-3">{row.rating ?? "—"}</td>
-                  <td className="max-w-xs px-4 py-3 text-muted-foreground">
-                    {row.comment || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {formatAdminDate(row.createdAt)}
-                  </td>
+        <div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="min-w-full text-sm">
+              <thead className="bg-neutral-50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3">Submitter</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Target</th>
+                  <th className="px-4 py-3">Rating</th>
+                  <th className="px-4 py-3">Comment</th>
+                  <th className="px-4 py-3">When</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {submissionsPaged.rows.map((row) => (
+                  <tr key={row.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{row.user?.name}</p>
+                      {row.user?.email ? (
+                        <p className="text-xs text-muted-foreground">{row.user.email}</p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">{row.feedbackType}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{row.targetKey}</td>
+                    <td className="px-4 py-3">{row.rating ?? "—"}</td>
+                    <td className="max-w-xs px-4 py-3 text-muted-foreground">
+                      {row.comment || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatAdminDate(row.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination
+            page={submissionsPaged.page}
+            totalPages={submissionsPaged.totalPages}
+            total={submissionsPaged.total}
+            start={submissionsPaged.start}
+            end={submissionsPaged.end}
+            onPageChange={setPage}
+          />
         </div>
       ) : null}
     </div>

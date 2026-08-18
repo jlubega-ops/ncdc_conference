@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FileSpreadsheet } from "lucide-react";
 import { AdminListFilters } from "./AdminListFilters";
 import { formatAdminDate, UserCell } from "./AdminTabShell";
 import { PaperSubmissionReviewModal } from "./PaperSubmissionReviewModal";
 import { PAPER_STATUS_LABELS, PAPER_STATUS_STYLES } from "@/lib/papers/constants";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { paginateRows } from "@/lib/table/paginate";
+import { downloadCsv } from "@/lib/csv/download";
 
 const STATUS_OPTIONS = Object.entries(PAPER_STATUS_LABELS).map(([value, label]) => ({
   value,
@@ -25,6 +31,7 @@ export function ConferenceAdminSubmissionsTab({
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -45,19 +52,28 @@ export function ConferenceAdminSubmissionsTab({
     });
   }, [submissions, search, statusFilter]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const paged = useMemo(() => paginateRows(filtered, page, 25), [filtered, page]);
+
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const res = await fetch(`/api/admin/conferences/${conferenceId}/submissions`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load submissions.");
       setSubmissions(data.submissions ?? []);
+      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load submissions.");
-      setSubmissions([]);
+      if (!silent) setSubmissions([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [conferenceId]);
 
@@ -70,22 +86,29 @@ export function ConferenceAdminSubmissionsTab({
   }
 
   async function handleUpdated() {
-    await load();
-    if (selected) {
-      const res = await fetch(`/api/admin/conferences/${conferenceId}/submissions`);
-      const data = await res.json();
-      if (res.ok) {
-        const updated = (data.submissions ?? []).find((s) => s.id === selected.id);
-        if (updated) setSelected(updated);
-      }
-    }
+    await load({ silent: true });
   }
 
-  if (loading) {
+  function exportSubmissions() {
+    downloadCsv(
+      "submissions.csv",
+      ["Title", "Author", "Email", "Status", "Reviewer", "Submitted"],
+      filtered.map((row) => [
+        row.title || "",
+        row.user?.name || "",
+        row.user?.email || "",
+        PAPER_STATUS_LABELS[row.status] ?? row.status,
+        row.assignedReviewer?.email || "",
+        row.submittedAt || row.createdAt || "",
+      ]),
+    );
+  }
+
+  if (loading && submissions.length === 0) {
     return <p className="text-sm text-muted-foreground">Loading submissions…</p>;
   }
 
-  if (error) {
+  if (error && submissions.length === 0) {
     return <p className="text-sm text-error">{error}</p>;
   }
 
@@ -106,7 +129,20 @@ export function ConferenceAdminSubmissionsTab({
         onStatusFilterChange={setStatusFilter}
         statusOptions={STATUS_OPTIONS}
         searchPlaceholder="Search papers…"
+        trailing={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={exportSubmissions}
+            disabled={filtered.length === 0}
+          >
+            <Icon icon={FileSpreadsheet} size="sm" />
+            Export
+          </Button>
+        }
       />
+      {error ? <p className="mb-3 text-sm text-error">{error}</p> : null}
       <div className="overflow-x-auto rounded-md border border-border">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="border-b border-border bg-neutral-50/80 text-xs font-medium text-muted-foreground">
@@ -126,7 +162,7 @@ export function ConferenceAdminSubmissionsTab({
                 </td>
               </tr>
             ) : null}
-            {filtered.map((row) => (
+            {paged.rows.map((row) => (
               <tr
                 key={row.id}
                 className="cursor-pointer transition-colors hover:bg-primary-light/30"
@@ -162,6 +198,14 @@ export function ConferenceAdminSubmissionsTab({
           </tbody>
         </table>
       </div>
+      <TablePagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPageChange={setPage}
+      />
 
       <PaperSubmissionReviewModal
         open={Boolean(selected)}

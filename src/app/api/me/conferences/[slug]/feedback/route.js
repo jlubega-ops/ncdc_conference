@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { jsonNoStore } from "@/lib/http/no-store";
 import {
-  getPublishedConferenceBySlug,
-  mapConferenceForUi,
-} from "@/lib/conferences/service";
+  getPublishedConferenceBySlugCached,
+} from "@/lib/conferences/public-cache";
+import { mapConferenceForUi } from "@/lib/conferences/service";
 import { requireConfirmedRegistration } from "@/lib/auth/conference-member";
 import {
   getZonedDateTimeParts,
@@ -26,7 +26,7 @@ import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
  * @param {string} slug
  */
 async function resolveConferenceForFeedback(slug) {
-  const published = await getPublishedConferenceBySlug(slug);
+  const published = await getPublishedConferenceBySlugCached(slug);
   if (published) return published;
   const row = await prisma.conference.findFirst({ where: { slug } });
   return row ? mapConferenceForUi(row) : null;
@@ -89,23 +89,23 @@ function mapFeedbackRow(row) {
 export async function GET(_request, { params }) {
   const session = await requireSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { slug } = await params;
   const conference = await resolveConferenceForFeedback(slug);
   if (!conference) {
-    return NextResponse.json({ error: "Conference not found." }, { status: 404 });
+    return jsonNoStore({ error: "Conference not found." }, { status: 404 });
   }
 
   const check = await requireConfirmedRegistration(session.user.id, conference.id);
   if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+    return jsonNoStore({ error: check.error }, { status: check.status });
   }
 
   const settings = normalizeFeedbackSettings(conference.feedbackSettings);
   if (!settings.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Feedback is not enabled for this conference." },
       { status: 403 },
     );
@@ -122,7 +122,7 @@ export async function GET(_request, { params }) {
   const days = buildFeedbackDays(conference, todayKey);
   const currentMeetingDay = days.find((d) => d.date === todayKey) ?? null;
 
-  return NextResponse.json({
+  return jsonNoStore({
     conference: { slug: conference.slug, title: conference.title },
     settings,
     timezone: tz,
@@ -137,30 +137,30 @@ export async function GET(_request, { params }) {
 export async function POST(request, { params }) {
   const session = await requireSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { slug } = await params;
   const conference = await resolveConferenceForFeedback(slug);
   if (!conference) {
-    return NextResponse.json({ error: "Conference not found." }, { status: 404 });
+    return jsonNoStore({ error: "Conference not found." }, { status: 404 });
   }
 
   const check = await requireConfirmedRegistration(session.user.id, conference.id);
   if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+    return jsonNoStore({ error: check.error }, { status: check.status });
   }
 
   let body;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return jsonNoStore({ error: "Invalid request body." }, { status: 400 });
   }
 
   const settings = normalizeFeedbackSettings(conference.feedbackSettings);
   if (!settings.allowed) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Feedback is not enabled for this conference." },
       { status: 403 },
     );
@@ -171,7 +171,7 @@ export async function POST(request, { params }) {
       : FEEDBACK_TYPES.DAY;
   const targetKey = String(body?.targetKey || "").trim();
   if (!targetKey) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "A target day or speaker is required." },
       { status: 400 },
     );
@@ -184,24 +184,24 @@ export async function POST(request, { params }) {
   const isScheduledDay = scheduledDays.some((d) => d.date === dayDate);
 
   if (!dayDate || !isScheduledDay) {
-    return NextResponse.json({ error: "Invalid feedback day." }, { status: 400 });
+    return jsonNoStore({ error: "Invalid feedback day." }, { status: 400 });
   }
   if (settings.availability === "always") {
     if (dayDate > todayKey) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "Feedback for future days opens on the meeting date." },
         { status: 403 },
       );
     }
   } else {
     if (dayDate < todayKey) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "Feedback for past days is locked and cannot be edited." },
         { status: 403 },
       );
     }
     if (dayDate > todayKey) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "Feedback for future days opens on the meeting date." },
         { status: 403 },
       );
@@ -214,7 +214,7 @@ export async function POST(request, { params }) {
     settings,
   );
   if (error) {
-    return NextResponse.json({ error }, { status: 400 });
+    return jsonNoStore({ error }, { status: 400 });
   }
 
   const isAnonymous = Boolean(body?.isAnonymous);
@@ -257,5 +257,5 @@ export async function POST(request, { params }) {
     metadata: { feedbackType, targetKey, isAnonymous },
   });
 
-  return NextResponse.json({ ok: true, feedback: mapFeedbackRow(row) });
+  return jsonNoStore({ ok: true, feedback: mapFeedbackRow(row) });
 }

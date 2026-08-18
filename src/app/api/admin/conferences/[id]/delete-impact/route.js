@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperadmin } from "@/lib/auth/guards";
+import { authorizeSuperadmin } from "@/lib/auth/guards";
 import { getConferenceDeleteImpact } from "@/lib/conferences/delete";
 
 /**
@@ -7,12 +7,9 @@ import { getConferenceDeleteImpact } from "@/lib/conferences/delete";
  */
 export async function GET(_request, { params }) {
   const { id } = await params;
-  const session = await requireSuperadmin();
-  if (!session) {
-    return NextResponse.json(
-      { error: "Only system administrators can delete conferences." },
-      { status: 401 },
-    );
+  const access = await authorizeSuperadmin();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
   const impact = await getConferenceDeleteImpact(id);

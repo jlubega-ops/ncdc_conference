@@ -5,6 +5,7 @@ import { Download, Upload } from "lucide-react";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { ActionProgress } from "@/components/ui/ActionProgress";
 import { cn } from "@/lib/cn";
 
 /**
@@ -21,11 +22,13 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("pick");
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   function reset() {
     setPreview([]);
     setSummary(null);
     setStep("pick");
+    setUploadProgress(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -79,18 +82,41 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
 
   async function confirmUpload() {
     if (preview.length === 0) return;
+    const CHUNK = 8;
     setBusy(true);
+    setUploadProgress({ current: 0, total: preview.length });
+    const totals = { created: 0, updated: 0, skipped: 0, errors: [] };
     try {
-      const res = await fetch(`/api/admin/conferences/${conferenceId}/attendees/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: preview, allowErrors: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed.");
-      toast.success(data.message || "Attendees uploaded.");
-      if (data.results?.errors?.length) {
-        toast.warning(`${data.results.errors.length} row(s) failed during upload.`);
+      for (let i = 0; i < preview.length; i += CHUNK) {
+        const chunk = preview.slice(i, i + CHUNK);
+        const isLast = i + CHUNK >= preview.length;
+        const res = await fetch(`/api/admin/conferences/${conferenceId}/attendees/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rows: chunk,
+            allowErrors: true,
+            silent: !isLast,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Upload failed.");
+        totals.created += data.results?.created ?? 0;
+        totals.updated += data.results?.updated ?? 0;
+        totals.skipped += data.results?.skipped ?? 0;
+        if (Array.isArray(data.results?.errors)) {
+          totals.errors.push(...data.results.errors);
+        }
+        setUploadProgress({
+          current: Math.min(preview.length, i + chunk.length),
+          total: preview.length,
+        });
+      }
+      toast.success(
+        `Upload complete: ${totals.created} created, ${totals.updated} updated. Access codes were not emailed — use Send access codes when ready.`,
+      );
+      if (totals.errors.length) {
+        toast.warning(`${totals.errors.length} row(s) failed during upload.`);
       }
       reset();
       onClose();
@@ -99,6 +125,7 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
       toast.error(e instanceof Error ? e.message : "Upload failed.");
     } finally {
       setBusy(false);
+      setUploadProgress(null);
     }
   }
 
@@ -190,9 +217,20 @@ export function AttendeeUploadDialog({ conferenceId, open, onClose, onUploaded }
                 disabled={busy || preview.length === 0}
                 onClick={confirmUpload}
               >
-                {busy ? "Uploading…" : "Confirm upload"}
+                {busy
+                  ? uploadProgress
+                    ? `Uploading ${uploadProgress.current}/${uploadProgress.total}…`
+                    : "Uploading…"
+                  : "Confirm upload"}
               </Button>
             </div>
+            {uploadProgress ? (
+              <ActionProgress
+                current={uploadProgress.current}
+                total={uploadProgress.total}
+                label="Uploading attendees…"
+              />
+            ) : null}
           </>
         ) : null}
       </div>

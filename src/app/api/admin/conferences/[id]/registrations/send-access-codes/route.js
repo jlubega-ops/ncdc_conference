@@ -23,21 +23,23 @@ export async function POST(request, { params }) {
     const registrationIds = Array.isArray(body.registrationIds) ? body.registrationIds : [];
     const results = await sendAccessCodesBulk({ conferenceId, registrationIds });
 
-    await logActivity({
-      session,
-      request,
-      action: ACTIVITY_ACTIONS.REGISTRATION_BULK_SEND_ACCESS,
-      description: `Sent access codes to ${results.sent} attendee(s)${
-        results.failed.length ? ` (${results.failed.length} failed)` : ""
-      }.`,
-      resourceType: "registration",
-      conferenceId,
-      metadata: {
-        requested: registrationIds.length,
-        sent: results.sent,
-        failed: results.failed.length,
-      },
-    });
+    if (!body.silent) {
+      await logActivity({
+        session,
+        request,
+        action: ACTIVITY_ACTIONS.REGISTRATION_BULK_SEND_ACCESS,
+        description: `Sent access codes to ${results.sent} attendee(s)${
+          results.failed.length ? ` (${results.failed.length} failed)` : ""
+        }.`,
+        resourceType: "registration",
+        conferenceId,
+        metadata: {
+          requested: registrationIds.length,
+          sent: results.sent,
+          failed: results.failed.length,
+        },
+      });
+    }
 
     const message =
       results.failed.length === 0

@@ -3,11 +3,11 @@ import { MyRegistrationConferenceView } from "@/components/dashboard/MyRegistrat
 import { requirePermissionPage } from "@/lib/auth/guards";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
-import { getPublishedConferenceBySlug } from "@/lib/conferences/service";
+import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) return { title: "Conference Not Found" };
   return {
     title: `${conference.title} | My Registrations`,
@@ -23,7 +23,7 @@ export default async function DashboardMyRegistrationConferencePage({ params, se
     `/dashboard/my-registrations/${slug}`,
   );
 
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) notFound();
 
   const reg = await getUserConferenceRegistration(session.user.id, conference.id);

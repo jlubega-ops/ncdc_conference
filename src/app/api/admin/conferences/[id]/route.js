@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { authorizeConferenceAccess, requireSuperadmin } from "@/lib/auth/guards";
+import { authorizeConferenceAccess, authorizeSuperadmin } from "@/lib/auth/guards";
 import { mapConferenceForUi } from "@/lib/conferences/service";
-import { revalidatePublishedConferenceCache } from "@/lib/conferences/public-cache";
+import { revalidateConferenceCache } from "@/lib/conferences/public-cache";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
@@ -158,7 +158,7 @@ export async function PATCH(request, { params }) {
       conferenceId: updated.id,
       metadata: { publicationStatus: updated.publicationStatus, slug: updated.slug },
     });
-    revalidatePublishedConferenceCache(updated.slug);
+    revalidateConferenceCache({ id: updated.id, slug: updated.slug });
     return NextResponse.json({
       conference: mapConferenceForUi(updated),
       message:
@@ -174,13 +174,11 @@ export async function PATCH(request, { params }) {
 
 export async function DELETE(request, { params }) {
   const { id } = await params;
-  const session = await requireSuperadmin();
-  if (!session) {
-    return NextResponse.json(
-      { error: "Only system administrators can delete conferences." },
-      { status: 401 },
-    );
+  const access = await authorizeSuperadmin();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   let body = {};
   try {
@@ -226,7 +224,10 @@ export async function DELETE(request, { params }) {
         },
       });
     }
-    revalidatePublishedConferenceCache(result.impact?.conference?.slug);
+    revalidateConferenceCache({
+      id: result.impact?.conference?.id ?? id,
+      slug: result.impact?.conference?.slug,
+    });
     return NextResponse.json({
       ok: true,
       message: result.message,

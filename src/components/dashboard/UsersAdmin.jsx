@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
-import { Loader2, Mail, Pencil, Trash2, UserPlus } from "lucide-react";
+import { Loader2, Mail, Pencil, Trash2, UserPlus, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -16,6 +16,9 @@ import { formatAdminDate } from "@/components/dashboard/admin-tabs/AdminTabShell
 import { AdminListFilters } from "@/components/dashboard/admin-tabs/AdminListFilters";
 import { genderLabel } from "@/lib/users/profile";
 import { ADMIN_FORM_ROLES } from "@/lib/users/validation";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { paginateRows } from "@/lib/table/paginate";
+import { downloadCsv } from "@/lib/csv/download";
 
 const ASSIGNABLE_ROLES = ADMIN_FORM_ROLES;
 const FILTER_ROLES = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER", "ATTENDEE"];
@@ -107,6 +110,7 @@ export function UsersAdmin() {
   const [accountFilter, setAccountFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [conferenceFilter, setConferenceFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   const filters = useMemo(
     () => ({ search, accountFilter, roleFilter, conferenceFilter }),
@@ -117,6 +121,12 @@ export function UsersAdmin() {
     () => users.filter((user) => userMatchesFilters(user, filters)),
     [users, filters],
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, accountFilter, roleFilter, conferenceFilter]);
+
+  const paged = useMemo(() => paginateRows(filteredUsers, page, 25), [filteredUsers, page]);
 
   const hasActiveFilters =
     search.trim() !== "" ||
@@ -131,8 +141,30 @@ export function UsersAdmin() {
     setConferenceFilter("all");
   }
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  function exportUsers() {
+    downloadCsv(
+      "users.csv",
+      ["Name", "Email", "Gender", "Roles", "Account", "Conferences", "Created"],
+      filteredUsers.map((user) => [
+        user.name || "",
+        user.email || "",
+        genderLabel(user.profile?.gender) || "",
+        [...new Set(user.roles.map((r) => ROLE_LABELS[r.role] ?? r.role))].join("; "),
+        user.accountActivated ? "Active" : "Pending activation",
+        [
+          ...new Set(
+            user.roles
+              .filter((r) => r.conference?.title)
+              .map((r) => r.conference.title),
+          ),
+        ].join("; "),
+        user.createdAt ? new Date(user.createdAt).toISOString() : "",
+      ]),
+    );
+  }
+
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const [usersRes, confRes] = await Promise.all([
         fetch("/api/admin/users"),
@@ -145,9 +177,9 @@ export function UsersAdmin() {
       if (confRes.ok) setConferences(confData.conferences ?? []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load users.");
-      setUsers([]);
+      if (!silent) setUsers([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -230,7 +262,13 @@ export function UsersAdmin() {
       }
       toast.success(data.message || (isEdit ? "User updated." : "User created."));
       closeFormModal();
-      await load();
+      if (data.user) {
+        setUsers((prev) => {
+          if (isEdit) return prev.map((u) => (u.id === data.user.id ? data.user : u));
+          return [data.user, ...prev];
+        });
+      }
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Request failed.");
     } finally {
@@ -249,7 +287,7 @@ export function UsersAdmin() {
       if (!res.ok) throw new Error(data.error || "Could not resend activation.");
       toast.success(data.message || "Activation email sent with a new temporary password.");
       setResendTarget(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not resend activation.");
     } finally {
@@ -265,8 +303,9 @@ export function UsersAdmin() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not delete user.");
       toast.success(data.message || "User deleted.");
+      const deletedId = userToDelete.id;
       setUserToDelete(null);
-      await load();
+      setUsers((prev) => prev.filter((u) => u.id !== deletedId));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not delete user.");
     } finally {
@@ -422,13 +461,19 @@ export function UsersAdmin() {
             Create and manage accounts, roles, and activation emails.
           </p>
         </div>
-        <Button variant="primary" onClick={openCreate}>
-          <Icon icon={UserPlus} size="sm" />
-          Add user
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={exportUsers} disabled={filteredUsers.length === 0}>
+            <Icon icon={FileSpreadsheet} size="sm" />
+            Export
+          </Button>
+          <Button variant="primary" onClick={openCreate}>
+            <Icon icon={UserPlus} size="sm" />
+            Add user
+          </Button>
+        </div>
       </div>
 
-      {loading ? (
+      {loading && users.length === 0 ? (
         <p className="text-sm text-muted-foreground">Loading users…</p>
       ) : (
         <>
@@ -530,7 +575,7 @@ export function UsersAdmin() {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => {
+                paged.rows.map((user) => {
                   const isResending = resendingId === user.id;
                   return (
                     <tr key={user.id}>
@@ -609,6 +654,14 @@ export function UsersAdmin() {
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPageChange={setPage}
+        />
         </>
       )}
 

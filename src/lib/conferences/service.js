@@ -178,31 +178,26 @@ export async function getPublishedConferenceBySlug(slug) {
 
 /**
  * Search open (published, not completed) conferences by title or reference.
+ * Pass an already-loaded published list (prefer the public cache) so search does not hit the DB.
+ * @param {Array<any>} conferences
  * @param {string} query
  * @param {{ limit?: number }} [opts]
  */
-export async function searchOpenConferences(query, opts = {}) {
+export function searchOpenConferences(conferences, query, opts = {}) {
   const q = String(query ?? "").trim();
   if (q.length < 2) return [];
 
   const limit = opts.limit ?? 8;
-  const rows = await prisma.conference.findMany({
-    where: { publicationStatus: "PUBLISHED" },
-    orderBy: [{ startDate: "asc" }, { title: "asc" }],
-    take: 80,
-  });
-
   const needle = q.toLowerCase();
   const needleRef = normalizeConferenceReferenceInput(q);
+  const list = Array.isArray(conferences) ? conferences : [];
 
-  return rows
-    .map(mapConferenceForUi)
+  return list
     .filter(isOpenPublicConference)
     .filter((c) => {
       const ref = normalizeConferenceReferenceInput(c.reference || "");
-      const titleMatch = c.title.toLowerCase().includes(needle);
-      const slugMatch = c.slug.toLowerCase().includes(needle);
-      // Prefix-only on reference so unique leading characters narrow results as users type.
+      const titleMatch = String(c.title || "").toLowerCase().includes(needle);
+      const slugMatch = String(c.slug || "").toLowerCase().includes(needle);
       const refMatch = ref.startsWith(needleRef);
       return titleMatch || slugMatch || refMatch;
     })

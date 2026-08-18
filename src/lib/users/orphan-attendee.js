@@ -67,6 +67,11 @@ export async function deleteUserAndRelatedData(userId) {
  * @returns {Promise<boolean>} whether the user account was deleted
  */
 export async function deleteUserIfOrphanAttendee(userId, conferenceId) {
+  const giftCount = await prisma.conferenceGiftIssuance.count({
+    where: { userId },
+  });
+  if (giftCount > 0) return false;
+
   const orphan = await isOrphanAttendeeOnly(userId, {
     excludingConferenceIds: [conferenceId],
   });

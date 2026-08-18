@@ -8,6 +8,7 @@ import {
 } from "@/lib/conference-content/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { revalidateConferenceCacheById } from "@/lib/conferences/public-cache";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,10 @@ export async function GET(_request, { params }) {
     listConferencePresentations(id),
     getConferenceDaysForPresentations(id),
   ]);
-  return NextResponse.json({ presentations, conferenceDays });
+  return NextResponse.json(
+    { presentations, conferenceDays },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 export async function POST(request, { params }) {
@@ -46,6 +50,7 @@ export async function POST(request, { params }) {
       resourceId: presentation.id,
       conferenceId: id,
     });
+    await revalidateConferenceCacheById(id);
     return NextResponse.json({ presentation });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not add presentation.";
@@ -77,6 +82,7 @@ export async function DELETE(request, { params }) {
       resourceId: presentationId,
       conferenceId: id,
     });
+    await revalidateConferenceCacheById(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not delete presentation.";

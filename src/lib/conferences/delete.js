@@ -27,6 +27,7 @@ export async function getConferenceDeleteImpact(conferenceId) {
     giftIssuanceCount,
     adminRoleCount,
     registrations,
+    giftUsers,
   ] = await Promise.all([
     prisma.conferenceRegistration.count({ where: { conferenceId } }),
     prisma.conferenceAttendance.count({ where: { conferenceId } }),
@@ -47,9 +48,18 @@ export async function getConferenceDeleteImpact(conferenceId) {
       where: { conferenceId },
       select: { userId: true },
     }),
+    prisma.conferenceGiftIssuance.findMany({
+      where: { conferenceId, userId: { not: null } },
+      select: { userId: true },
+    }),
   ]);
 
-  const uniqueUserIds = [...new Set(registrations.map((r) => r.userId))];
+  const uniqueUserIds = [
+    ...new Set([
+      ...registrations.map((r) => r.userId),
+      ...giftUsers.map((r) => r.userId).filter(Boolean),
+    ]),
+  ];
   let orphanAttendeeCount = 0;
   for (const userId of uniqueUserIds) {
     if (
@@ -97,24 +107,39 @@ export async function deleteConferenceWithCascade(conferenceId) {
       user: { select: { id: true, email: true, name: true } },
     },
   });
+  const giftOnlyRows = await prisma.conferenceGiftIssuance.findMany({
+    where: { conferenceId, userId: { not: null } },
+    select: {
+      userId: true,
+      user: { select: { id: true, email: true, name: true } },
+    },
+  });
 
   const seenUserIds = new Set();
   /** @type {Array<{ id: string; email: string; name: string | null }>} */
   const orphanUsers = [];
-  for (const row of registrationRows) {
-    if (seenUserIds.has(row.userId)) continue;
-    seenUserIds.add(row.userId);
+
+  async function considerOrphan(user) {
+    if (!user?.id || seenUserIds.has(user.id)) return;
+    seenUserIds.add(user.id);
     if (
-      await isOrphanAttendeeOnly(row.userId, {
+      await isOrphanAttendeeOnly(user.id, {
         excludingConferenceIds: [conferenceId],
       })
     ) {
       orphanUsers.push({
-        id: row.user.id,
-        email: row.user.email,
-        name: row.user.name,
+        id: user.id,
+        email: user.email,
+        name: user.name,
       });
     }
+  }
+
+  for (const row of registrationRows) {
+    await considerOrphan(row.user);
+  }
+  for (const row of giftOnlyRows) {
+    await considerOrphan(row.user);
   }
 
   // Conference delete cascades registrations, attendance, feedback, certificates,

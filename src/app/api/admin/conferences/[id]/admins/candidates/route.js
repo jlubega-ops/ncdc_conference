@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireSuperadminCapability } from "@/lib/auth/guards";
+import { authorizeSuperadminCapability } from "@/lib/auth/guards";
 import { searchConferenceAdminCandidates } from "@/lib/conference-admins/service";
 
 export async function GET(request, { params }) {
-  const session = await requireSuperadminCapability();
-  if (!session) {
-    return NextResponse.json({ error: "Only superadmins can search users." }, { status: 403 });
+  const access = await authorizeSuperadminCapability();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
   const { id: conferenceId } = await params;

@@ -4,11 +4,12 @@ import { getUserProfile, updateUserProfile } from "@/lib/users/service";
 import { isAttendeeProfileLocked } from "@/lib/users/profile-lock";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
+import { jsonNoStore } from "@/lib/http/no-store";
 
 export async function GET() {
   const session = await requireSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   }
 
   const data = await getUserProfile(session.user.id);
@@ -16,7 +17,7 @@ export async function GET() {
     session.activeRole === "ATTENDEE"
       ? await isAttendeeProfileLocked(session.user.id, session.activeConferenceId)
       : false;
-  return NextResponse.json({ ...data, profileLocked });
+  return jsonNoStore({ ...data, profileLocked });
 }
 
 export async function PATCH(request) {

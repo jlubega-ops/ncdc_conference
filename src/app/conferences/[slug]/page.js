@@ -3,12 +3,13 @@ import { Suspense } from "react";
 import { ConferenceDetailHero } from "@/components/conference/ConferenceDetailHero";
 import { ConferenceTabs } from "@/components/conference/ConferenceTabs";
 import { canManageConference } from "@/lib/auth/conference-access";
-import { getDefaultDashboardPath } from "@/lib/auth/dashboard-routes";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
 import { isInviteOnlyConference } from "@/lib/conferences/service";
-import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
-import { getMemberContentAvailability } from "@/lib/conference-content/service";
+import {
+  getMemberContentAvailabilityCached,
+  getPublishedConferenceBySlugCached,
+} from "@/lib/conferences/public-cache";
 import {
   conferenceMetadataIcons,
   organiserBrandFromConference,
@@ -92,19 +93,18 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
     /* ignore session lookup failures */
   }
 
-  // Logged-in users do not browse public conference pages.
-  // Confirmed attendees may open their conference hub; managers may preview theirs.
+  // Staff who manage this conference use the dashboard, not a public preview.
+  // Confirmed attendees still open their conference hub here.
   if (session) {
     const isManager = canManageConference(session, conference.id);
     const isConfirmedAttendee = registrationStatus === "CONFIRMED";
-    if (!isConfirmedAttendee && !isManager) {
-      redirect(getDefaultDashboardPath(session));
+    if (isManager && !isConfirmedAttendee) {
+      redirect(`/dashboard/manage/${conference.id}`);
     }
   }
 
   if (isInviteOnlyConference(conference)) {
-    const isManager = session ? canManageConference(session, conference.id) : false;
-    const hasAccess = registrationStatus === "CONFIRMED" || isManager;
+    const hasAccess = registrationStatus === "CONFIRMED";
     if (!hasAccess) {
       if (!isAuthenticated) {
         redirect(`/access?redirect=${encodeURIComponent(returnPath)}`);
@@ -119,14 +119,13 @@ export default async function ConferenceDetailPage({ params, searchParams }) {
   }
 
   const initialTab = requestedTab;
-  const isManager = session ? canManageConference(session, conference.id) : false;
   const isConfirmedAttendee = registrationStatus === "CONFIRMED";
-  const canAccessMemberContent = Boolean(isManager || isConfirmedAttendee);
+  const canAccessMemberContent = Boolean(isConfirmedAttendee);
 
   let memberContent = null;
   if (canAccessMemberContent) {
     try {
-      memberContent = await getMemberContentAvailability(conference.id);
+      memberContent = await getMemberContentAvailabilityCached(conference.id);
     } catch {
       memberContent = null;
     }

@@ -15,6 +15,7 @@ import {
 import { issueAndEmailAccessKey } from "@/lib/registration/access-key-issue";
 import { emailBrandFromConference } from "@/lib/conferences/brand";
 import { invalidateCertificatePdfsForUser } from "@/lib/certificates/service";
+import { adoptUserForConferencePerson } from "@/lib/users/merge-conference-person";
 
 /**
  * @param {string} conferenceId
@@ -100,11 +101,15 @@ export async function registerUserForConference({
   const autoApprove = mode === "AUTO_APPROVE";
   const initialStatus = autoApprove ? "CONFIRMED" : "PENDING";
 
-  let user = await prisma.user.findUnique({
-    where: { email },
-    include: { roles: true },
+  const adopted = await adoptUserForConferencePerson({
+    conferenceId,
+    email,
+    firstName: values.firstName,
+    lastName: values.lastName,
+    institution: values.institution,
   });
 
+  let user = adopted.user;
   const isNewUser = !user;
 
   if (isNewUser) {
@@ -130,12 +135,29 @@ export async function registerUserForConference({
             paymentProofFileId,
             formData: values,
             reviewedAt: autoApprove ? new Date() : null,
+            registeredBySource: "SELF",
           },
         },
       },
       include: { roles: true },
     });
+    const createdReg = await prisma.conferenceRegistration.findUnique({
+      where: { conferenceId_userId: { conferenceId, userId: user.id } },
+    });
+    if (createdReg) {
+      await prisma.conferenceRegistration.update({
+        where: { id: createdReg.id },
+        data: { registeredById: user.id },
+      });
+    }
   } else {
+    const existingReg = await prisma.conferenceRegistration.findUnique({
+      where: { conferenceId_userId: { conferenceId, userId: user.id } },
+    });
+    if (existingReg) {
+      throw new Error(`You are already registered for ${conference.title}.`);
+    }
+
     const mergedValues = mergeRegistrationWithProfile(user, values);
     const mergedProfile = buildProfilePayload(mergedValues);
 
@@ -163,11 +185,13 @@ export async function registerUserForConference({
           paymentProofFileId,
           formData: mergedValues,
           reviewedAt: autoApprove ? new Date() : null,
+          registeredById: user.id,
+          registeredBySource: "SELF",
         },
       }),
     ]);
 
-    const hasAttendee = user.roles.some(
+    const hasAttendee = (user.roles || []).some(
       (r) => r.role === "ATTENDEE" && r.conferenceId === conferenceId,
     );
     if (!hasAttendee) {

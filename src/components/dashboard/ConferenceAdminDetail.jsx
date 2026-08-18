@@ -190,15 +190,6 @@ export function ConferenceAdminDetail({
           >
             Edit conference
           </Button>
-          {isPublished ? (
-            <Button
-              variant="ghost"
-              href={`/conferences/${conference.slug}`}
-              className="w-full sm:w-auto"
-            >
-              View public page
-            </Button>
-          ) : null}
         </div>
 
         <nav

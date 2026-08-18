@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { authorizeConferenceAccess } from "@/lib/auth/guards";
+import { jsonNoStore } from "@/lib/http/no-store";
 import {
   addGiftRecipientAndIssue,
   getConferenceGiftsAdminData,
+  getGiftIssuersReport,
+  giftIssuersReportToCsv,
   giftsReportToCsv,
+  maybeMarkAttendanceForGiftIssue,
   upsertGiftIssuance,
 } from "@/lib/gifts/service";
 import { logActivity } from "@/lib/activity-log/service";
@@ -18,11 +22,27 @@ export async function GET(request, { params }) {
 
   try {
     const { searchParams } = new URL(request.url);
+    const format = searchParams.get("format");
+
+    if (format === "issuers" || format === "issuers-excel") {
+      const issuers = await getGiftIssuersReport(id);
+      if (format === "issuers-excel") {
+        const csv = giftIssuersReportToCsv(issuers);
+        const filename = `${issuers.conference?.slug || "conference"}-gifts-by-admin.csv`;
+        return new NextResponse(csv, {
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": `attachment; filename="${filename}"`,
+          },
+        });
+      }
+      return jsonNoStore(issuers);
+    }
+
     const data = await getConferenceGiftsAdminData(id, {
       category: searchParams.get("category") || "",
     });
 
-    const format = searchParams.get("format");
     if (format === "csv" || format === "excel") {
       const csv = giftsReportToCsv(data);
       const filename = `${data.conference?.slug || "conference"}-gifts.csv`;
@@ -34,7 +54,7 @@ export async function GET(request, { params }) {
       });
     }
 
-    return NextResponse.json(data);
+    return jsonNoStore(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not load gifts.";
     return NextResponse.json({ error: message }, { status: 400 });
@@ -107,6 +127,16 @@ export async function POST(request, { params }) {
       category: String(body.category || "").trim(),
       items,
       issuedById: session.user?.id ?? null,
+    });
+
+    const parsedUserId =
+      String(body.userId || "").trim() || issuance.userId || null;
+    await maybeMarkAttendanceForGiftIssue({
+      conferenceId: id,
+      userId: parsedUserId,
+      isConferenceRegistered: Boolean(body.isConferenceRegistered),
+      attendanceAction: String(body.attendanceAction || "").trim(),
+      markedById: session.user?.id ?? null,
     });
     await logActivity({
       session,

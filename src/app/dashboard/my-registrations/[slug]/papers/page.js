@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/Button";
 import { ConferenceMyPapers } from "@/components/conference/ConferenceMyPapers";
 import { getSessionRecord } from "@/lib/auth/session";
 import { getUserConferenceRegistration } from "@/lib/registration/access";
-import { getPublishedConferenceBySlug } from "@/lib/conferences/service";
+import { getPublishedConferenceBySlugCached } from "@/lib/conferences/public-cache";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) return { title: "Conference Not Found" };
   return {
     title: `My papers — ${conference.title}`,
@@ -23,7 +23,7 @@ export default async function DashboardMyPapersPage({ params }) {
     redirect(`/login?redirect=/dashboard/my-registrations/${slug}/papers`);
   }
 
-  const conference = await getPublishedConferenceBySlug(slug);
+  const conference = await getPublishedConferenceBySlugCached(slug);
   if (!conference) notFound();
 
   const reg = await getUserConferenceRegistration(session.user.id, conference.id);

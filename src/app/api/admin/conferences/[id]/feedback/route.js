@@ -5,6 +5,7 @@ import {
   getConferenceFeedbackReport,
 } from "@/lib/feedback/admin-report";
 import { renderFeedbackReportPdf } from "@/lib/feedback/pdf-report";
+import { jsonNoStore } from "@/lib/http/no-store";
 
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -12,7 +13,6 @@ export async function GET(request, { params }) {
   if (!access.ok) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
-  const session = access.session;
 
   try {
     const report = await getConferenceFeedbackReport(id);
@@ -41,7 +41,7 @@ export async function GET(request, { params }) {
       });
     }
 
-    return NextResponse.json(report);
+    return jsonNoStore(report);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not load feedback.";
     return NextResponse.json({ error: message }, { status: 400 });

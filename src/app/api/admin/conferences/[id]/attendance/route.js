@@ -8,6 +8,7 @@ import {
 import { getProfileFromUser, buildProfilePayload } from "@/lib/users/profile";
 import { updateRegistrationAttendeeByAdmin } from "@/lib/registration/service";
 import { logActivity } from "@/lib/activity-log/service";
+import { jsonNoStore } from "@/lib/http/no-store";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 /**
@@ -176,7 +177,7 @@ export async function GET(_request, { params }) {
     daySummaries[0] ??
     null;
 
-  return NextResponse.json({
+  return jsonNoStore({
     timezone: tz,
     todayKey,
     days: daySummaries,
@@ -247,12 +248,13 @@ export async function POST(request, { params }) {
     where: {
       conferenceId_userId_dayDate: { conferenceId: id, userId, dayDate },
     },
-    update: { dayIndex: day.dayIndex },
+    update: { dayIndex: day.dayIndex, markedById: session.user?.id ?? undefined },
     create: {
       conferenceId: id,
       userId,
       dayDate,
       dayIndex: day.dayIndex,
+      markedById: session.user?.id ?? null,
     },
     include: {
       user: { select: { id: true, email: true, name: true, profileData: true } },
@@ -322,12 +324,13 @@ export async function PATCH(request, { params }) {
         where: {
           conferenceId_userId_dayDate: { conferenceId: id, userId, dayDate },
         },
-        update: { dayIndex: day.dayIndex },
+        update: { dayIndex: day.dayIndex, markedById: session.user?.id ?? undefined },
         create: {
           conferenceId: id,
           userId,
           dayDate,
           dayIndex: day.dayIndex,
+          markedById: session.user?.id ?? null,
         },
         include: {
           user: { select: { id: true, email: true, name: true, profileData: true } },

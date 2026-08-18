@@ -2,8 +2,6 @@ import { ConferenceCard } from "@/components/ConferenceCard";
 import { RedirectIfAuthenticatedClient } from "@/components/auth/RedirectIfAuthenticatedClient";
 import { getPublishedConferencesCached } from "@/lib/conferences/public-cache";
 
-export const revalidate = 60;
-
 export const metadata = {
   title: "Conferences | Conference Management",
   description: "Browse open and upcoming conferences on the platform.",

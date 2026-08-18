@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { requireSuperadmin } from "@/lib/auth/guards";
+import { authorizeSuperadmin } from "@/lib/auth/guards";
 import { prisma } from "@/lib/prisma";
 import { deleteUserByAdmin, updateUserByAdmin } from "@/lib/users/service";
 import { logActivity } from "@/lib/activity-log/service";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 export async function PATCH(request, { params }) {
-  const session = await requireSuperadmin();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeSuperadmin();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const { id } = await params;
@@ -35,10 +36,11 @@ export async function PATCH(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
-  const session = await requireSuperadmin();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeSuperadmin();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const { id } = await params;

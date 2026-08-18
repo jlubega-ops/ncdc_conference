@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceManager, requireSuperadmin } from "@/lib/auth/guards";
+import { authorizeConferenceManager, authorizeSuperadmin } from "@/lib/auth/guards";
 import { getManagedConferenceIds } from "@/lib/auth/conference-access";
 import { mapConferenceForUi } from "@/lib/conferences/service";
-import { revalidatePublishedConferenceCache } from "@/lib/conferences/public-cache";
+import { revalidateConferenceCache } from "@/lib/conferences/public-cache";
 import { computeLifecycleStatus } from "@/lib/conferences/status";
+import { jsonNoStore } from "@/lib/http/no-store";
 import { validateConferenceForPublish } from "@/lib/conferences/validation";
 import { cascadeConferenceScheduleData } from "@/lib/conferences/cascade";
 import { sanitizeOnlineStreamForSave, sanitizeBreakoutRoomsForSave, slugify } from "@/lib/conferences/utils";
@@ -138,27 +139,26 @@ function buildConferencePayload(input, userId) {
 }
 
 export async function GET() {
-  const session = await requireConferenceManager();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceManager();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const managedIds = getManagedConferenceIds(session);
   const rows = await prisma.conference.findMany({
     where: managedIds === null ? undefined : { id: { in: managedIds } },
     orderBy: [{ updatedAt: "desc" }],
   });
-  return NextResponse.json({ conferences: rows.map(mapConferenceForUi) });
+  return jsonNoStore({ conferences: rows.map(mapConferenceForUi) });
 }
 
 export async function POST(request) {
-  const session = await requireSuperadmin();
-  if (!session) {
-    return NextResponse.json(
-      { error: "Only system administrators can create conferences." },
-      { status: 401 },
-    );
+  const access = await authorizeSuperadmin();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   try {
     const input = await request.json();
@@ -178,7 +178,7 @@ export async function POST(request) {
         publicationStatus: created.publicationStatus,
       },
     });
-    revalidatePublishedConferenceCache(created.slug);
+    revalidateConferenceCache({ id: created.id, slug: created.slug });
     return NextResponse.json(
       {
         conference: mapConferenceForUi(created),

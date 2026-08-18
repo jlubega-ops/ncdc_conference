@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { authorizeConferenceAccess } from "@/lib/auth/guards";
 import { mapRegistrationForAdmin, userSelect } from "@/lib/conferences/admin-data";
 import { addAttendeeByAdmin, listRepresentativesForConference } from "@/lib/registration/admin-attendee";
+import { formatRegisteredByLabel } from "@/lib/users/actor";
 import { logActivity } from "@/lib/activity-log/service";
+import { jsonNoStore } from "@/lib/http/no-store";
 import { ACTIVITY_ACTIONS } from "@/lib/activity-log/actions";
 
 /**
@@ -39,10 +41,13 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  const [rows, accessKeys, representativeLinks] = await Promise.all([
+  const [rows, accessKeys, representativeLinks, giftIssuances] = await Promise.all([
     prisma.conferenceRegistration.findMany({
       where: { conferenceId: id },
-      include: { user: { select: userSelect } },
+      include: {
+        user: { select: userSelect },
+        registeredBy: { select: { id: true, name: true, email: true } },
+      },
       orderBy: { registeredAt: "desc" },
     }),
     prisma.conferenceAccessKey.findMany({
@@ -56,7 +61,13 @@ export async function GET(_request, { params }) {
       },
     }),
     listRepresentativesForConference(id),
+    prisma.conferenceGiftIssuance.findMany({
+      where: { conferenceId: id, userId: { not: null } },
+      select: { userId: true },
+    }),
   ]);
+
+  const giftedUserIds = new Set(giftIssuances.map((row) => row.userId).filter(Boolean));
 
   const repsByPrincipal = new Map();
   const repsByRepresentative = new Map();
@@ -74,8 +85,7 @@ export async function GET(_request, { params }) {
   const keyEmails = new Set(accessKeys.map((k) => k.email.toLowerCase()));
   const keyUserIds = new Set(accessKeys.map((k) => k.userId).filter(Boolean));
 
-  return NextResponse.json(
-    {
+  return jsonNoStore({
       registrations: rows.map((row) => {
         const email = row.user?.email?.toLowerCase();
         const hasAccessKey =
@@ -91,15 +101,11 @@ export async function GET(_request, { params }) {
           accessCodeSent: Boolean(meta.emailedAt),
           representatives: repsByPrincipal.get(row.userId) || [],
           representing: repsByRepresentative.get(row.userId) || [],
+          registeredByLabel: formatRegisteredByLabel(row),
+          hasGiftIssuances: giftedUserIds.has(row.userId),
         });
       }),
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    },
-  );
+    });
 }
 
 export async function POST(request, { params }) {
@@ -126,6 +132,7 @@ export async function POST(request, { params }) {
       comment: body.comment,
       organisation: body.organisation ?? body.institution,
       forceDuplicate: Boolean(body.forceDuplicate),
+      createdById: session.user?.id ?? null,
     });
 
     if (result.needsConfirmation) {
@@ -177,6 +184,8 @@ export async function POST(request, { params }) {
         accessCodeSent: Boolean(meta.emailedAt),
         representatives: [],
         representing: [],
+        registeredByLabel: "Admin",
+        hasGiftIssuances: false,
       }),
     });
   } catch (err) {

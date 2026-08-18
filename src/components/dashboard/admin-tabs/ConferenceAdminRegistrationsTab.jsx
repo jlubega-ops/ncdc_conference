@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, Pencil, Plus, Trash2, Upload, Users } from "lucide-react";
+import { KeyRound, Pencil, Plus, Trash2, Upload, Users, FileSpreadsheet } from "lucide-react";
 import { AdminListFilters } from "./AdminListFilters";
 import { AttendeeUploadDialog } from "./AttendeeUploadDialog";
 import { AccessCodeDisplay } from "./AccessCodeDisplay";
@@ -10,7 +10,11 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { ActionProgress } from "@/components/ui/ActionProgress";
+import { TablePagination } from "@/components/ui/TablePagination";
 import { cn } from "@/lib/cn";
+import { paginateRows } from "@/lib/table/paginate";
+import { downloadCsv } from "@/lib/csv/download";
 import { formatAdminDate } from "./AdminTabShell";
 import { RegistrationDetailFields } from "./RegistrationDetailFields";
 import { OrganisationSuggestInput } from "@/components/forms/OrganisationSuggestInput";
@@ -80,6 +84,7 @@ export function ConferenceAdminRegistrationsTab({
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [sendProgress, setSendProgress] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_PERSON);
   const [addForce, setAddForce] = useState(false);
@@ -91,6 +96,7 @@ export function ConferenceAdminRegistrationsTab({
   const [repWarning, setRepWarning] = useState("");
   const [repsView, setRepsView] = useState(null);
   const [organisations, setOrganisations] = useState([]);
+  const [page, setPage] = useState(1);
 
   const organisationOptions = useMemo(() => {
     const set = new Set(organisations);
@@ -117,6 +123,7 @@ export function ConferenceAdminRegistrationsTab({
         row.organisation,
         row.status,
         row.accessCode,
+        row.registeredByLabel,
       ]
         .filter(Boolean)
         .join(" ")
@@ -124,6 +131,12 @@ export function ConferenceAdminRegistrationsTab({
       return text.includes(q);
     });
   }, [registrations, search, statusFilter, accountFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, accountFilter]);
+
+  const paged = useMemo(() => paginateRows(filtered, page, 25), [filtered, page]);
 
   const selectableFiltered = useMemo(
     () => filtered.filter((row) => row.status === "CONFIRMED"),
@@ -135,6 +148,32 @@ export function ConferenceAdminRegistrationsTab({
     selectableFiltered.every((row) => checkedIds.has(row.id));
 
   const checkedCount = checkedIds.size;
+
+  function exportRegistrations() {
+    downloadCsv(
+      "registrations.csv",
+      [
+        "Name",
+        "Email",
+        "Organisation",
+        "Status",
+        "Access code",
+        "Registered by",
+        "Registered",
+        "Last access",
+      ],
+      filtered.map((row) => [
+        row.displayName || "",
+        row.emailOmitted ? "" : row.user?.email || "",
+        row.institution || "",
+        STATUS_LABELS[row.status] ?? row.status,
+        row.accessCode || "",
+        row.registeredByLabel || "",
+        row.registeredAt ? new Date(row.registeredAt).toISOString() : "",
+        row.lastAccessAt ? new Date(row.lastAccessAt).toISOString() : "",
+      ]),
+    );
+  }
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -218,22 +257,39 @@ export function ConferenceAdminRegistrationsTab({
   }
 
   async function sendAccessCodesForIds(ids) {
+    const list = [...ids];
+    const total = list.length;
+    if (total === 0) return;
     setBusy(true);
+    setSendProgress({ current: 0, total });
+    let sent = 0;
+    const failed = [];
     try {
-      const res = await fetch(
-        `/api/admin/conferences/${conferenceId}/registrations/send-access-codes`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ registrationIds: ids }),
-        },
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not send access codes.");
-      if (data.failed?.length) {
-        toast.warning(data.message || "Some access codes could not be sent.");
+      for (let i = 0; i < list.length; i += 1) {
+        const id = list[i];
+        const res = await fetch(
+          `/api/admin/conferences/${conferenceId}/registrations/send-access-codes`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ registrationIds: [id], silent: i < list.length - 1 }),
+          },
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          failed.push({ id, message: data.error || "Could not send." });
+        } else {
+          sent += data.sent ?? 1;
+          if (Array.isArray(data.failed)) failed.push(...data.failed);
+        }
+        setSendProgress({ current: i + 1, total });
+      }
+      if (failed.length) {
+        toast.warning(
+          `Emailed ${sent} of ${total}. ${failed.length} could not be sent.`,
+        );
       } else {
-        toast.success(data.message || "Access codes emailed.");
+        toast.success(`Access codes emailed to ${sent} attendee(s).`);
       }
       setBulkConfirmOpen(false);
       setCheckedIds(new Set());
@@ -242,6 +298,7 @@ export function ConferenceAdminRegistrationsTab({
       toast.error(e instanceof Error ? e.message : "Could not send access codes.");
     } finally {
       setBusy(false);
+      setSendProgress(null);
     }
   }
 
@@ -514,19 +571,19 @@ export function ConferenceAdminRegistrationsTab({
                 Add attendee
               </Button>
               {isAdminUpload ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  icon={Upload}
-                  onClick={() => setUploadOpen(true)}
-                >
-                  Upload attendees
-                </Button>
-              ) : null}
-            </div>
-          ) : null
-        }
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={Upload}
+                onClick={() => setUploadOpen(true)}
+              >
+                Upload attendees
+              </Button>
+            ) : null}
+          </div>
+        ) : null
+      }
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -549,6 +606,17 @@ export function ConferenceAdminRegistrationsTab({
             {opt.label}
           </button>
         ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={exportRegistrations}
+          disabled={filtered.length === 0}
+        >
+          <Icon icon={FileSpreadsheet} size="sm" />
+          Export
+        </Button>
       </div>
 
       {checkedCount > 0 ? (
@@ -587,6 +655,7 @@ export function ConferenceAdminRegistrationsTab({
             : "No registrations for this conference yet."}
         </p>
       ) : (
+        <>
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="border-b border-border bg-neutral-50/80 text-xs font-medium text-foreground/80">
@@ -607,6 +676,7 @@ export function ConferenceAdminRegistrationsTab({
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Access code</th>
                 <th className="px-4 py-3">Registered</th>
+                <th className="px-4 py-3">Registered by</th>
                 <th className="px-4 py-3">Last access</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -614,12 +684,12 @@ export function ConferenceAdminRegistrationsTab({
             <tbody className="divide-y divide-border bg-background">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-foreground/80">
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-foreground/80">
                     No registrations match your filters.
                   </td>
                 </tr>
               ) : null}
-              {filtered.map((row) => {
+              {paged.rows.map((row) => {
                 const canSelect = row.status === "CONFIRMED";
                 return (
                   <tr
@@ -704,6 +774,12 @@ export function ConferenceAdminRegistrationsTab({
                       className="cursor-pointer px-4 py-3 text-foreground/80"
                       onClick={() => openRow(row)}
                     >
+                      {row.registeredByLabel || "—"}
+                    </td>
+                    <td
+                      className="cursor-pointer px-4 py-3 text-foreground/80"
+                      onClick={() => openRow(row)}
+                    >
                       {row.lastAccessAt ? formatAdminDate(row.lastAccessAt) : "Never"}
                     </td>
                     <td className="px-4 py-3">
@@ -737,10 +813,17 @@ export function ConferenceAdminRegistrationsTab({
                         </button>
                         <button
                           type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-error hover:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/30"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-error hover:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/30 disabled:cursor-not-allowed disabled:opacity-40"
                           aria-label={`Delete ${row.displayName || row.user?.email || "registration"}`}
+                          title={
+                            row.hasGiftIssuances
+                              ? "Cannot delete: this person was issued gifts"
+                              : "Delete registration"
+                          }
+                          disabled={row.hasGiftIssuances}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (row.hasGiftIssuances) return;
                             setDeleteTarget(row);
                             setDeleteConfirm("");
                           }}
@@ -755,6 +838,15 @@ export function ConferenceAdminRegistrationsTab({
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPageChange={setPage}
+        />
+        </>
       )}
 
       <AttendeeUploadDialog
@@ -774,6 +866,13 @@ export function ConferenceAdminRegistrationsTab({
             Email a new access code to <strong>{checkedCount}</strong> selected attendee
             {checkedCount === 1 ? "" : "s"}. Any previous code for those people will stop working.
           </p>
+          {sendProgress ? (
+            <ActionProgress
+              current={sendProgress.current}
+              total={sendProgress.total}
+              label="Sending access codes…"
+            />
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
@@ -788,7 +887,7 @@ export function ConferenceAdminRegistrationsTab({
               disabled={busy || checkedCount === 0}
               onClick={() => sendAccessCodesForIds([...checkedIds])}
             >
-              {busy ? "Sending…" : "Send codes"}
+              {busy ? (sendProgress ? `Sending ${sendProgress.current}/${sendProgress.total}…` : "Sending…") : "Send codes"}
             </Button>
           </div>
         </div>
@@ -1075,7 +1174,8 @@ export function ConferenceAdminRegistrationsTab({
                 {deleteTarget?.displayName || deleteTarget?.user?.email}
               </span>{" "}
               deletes their registration for this conference plus attendance, feedback,
-              certificates, papers, gifts, and access codes for this conference only.
+              certificates, papers, and access codes for this conference only. People who were
+              issued gifts cannot be removed.
             </p>
             <p className="mt-2 text-foreground/90">
               If they belong <span className="font-semibold">only</span> to this conference and

@@ -76,12 +76,15 @@ model User {
   conferenceAccessKeys ConferenceAccessKey[]
   conferencesCreated   Conference[]             @relation("ConferenceCreator")
   registrations        ConferenceRegistration[]
+  registrationsCreated ConferenceRegistration[] @relation("RegistrationCreatedBy")
   attendanceMarks      ConferenceAttendance[]
+  attendanceMarked     ConferenceAttendance[]   @relation("AttendanceMarkedBy")
   paperSubmissions       PaperSubmission[]
   papersAssignedReview   PaperSubmission[]      @relation("PaperAssignedReviewer")
   conferenceFeedback     ConferenceFeedback[]
   certificates           ConferenceCertificate[]
-  giftIssuances          ConferenceGiftIssuance[]
+  giftIssuances          ConferenceGiftIssuance[] @relation("GiftRecipient")
+  giftsIssued            ConferenceGiftIssuance[] @relation("GiftIssuedBy")
   representedAsPrincipal ConferenceRepresentative[] @relation("RepresentedPrincipals")
   actingAsRepresentative ConferenceRepresentative[] @relation("ActingRepresentatives")
 
@@ -219,6 +222,7 @@ model ConferenceAccessKey {
   user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([conferenceId, email])
+  @@index([conferenceId, userId])
   @@index([email, conferenceYear])
   @@index([displayCode])
   @@map("conference_access_keys")
@@ -236,17 +240,23 @@ model ConferenceRegistration {
   improvementRequest String?            @db.Text
   reviewedAt         DateTime?
   reviewedById       String?
+  /// SELF | ADMIN | UPLOAD
+  registeredBySource String?            @db.VarChar(16)
+  registeredById     String?
   registeredAt       DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registeredBy User?    @relation("RegistrationCreatedBy", fields: [registeredById], references: [id], onDelete: SetNull)
   representatives      ConferenceRepresentative[] @relation("PrincipalReps")
   representingFor      ConferenceRepresentative[] @relation("AsRepresentative")
 
   @@unique([conferenceId, userId])
   @@index([conferenceId, status])
   @@index([userId])
+  @@index([registeredById])
+  @@index([paymentProofFileId])
   @@map("conference_registrations")
 }
 
@@ -281,13 +291,16 @@ model ConferenceAttendance {
   dayDate      String   @db.VarChar(10)
   dayIndex     Int      @default(1)
   markedAt     DateTime @default(now())
+  markedById   String?
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  markedBy   User?      @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
 
   @@unique([conferenceId, userId, dayDate])
   @@index([conferenceId, dayDate])
   @@index([userId])
+  @@index([markedById])
   @@map("conference_attendance")
 }
 
@@ -308,6 +321,7 @@ model ConferenceCertificate {
 
   @@unique([conferenceId, userId])
   @@index([certificateNumber])
+  @@index([conferenceId])
   @@map("conference_certificates")
 }
 
@@ -340,6 +354,7 @@ model PaperSubmission {
   @@index([userId])
   @@index([assignedReviewerId])
   @@index([reviewedById])
+  @@index([fileId])
   @@map("paper_submissions")
 }
 
@@ -385,12 +400,15 @@ model ConferenceGiftIssuance {
   updatedAt    DateTime @updatedAt
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
-  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       User?      @relation("GiftRecipient", fields: [userId], references: [id], onDelete: SetNull)
   userId     String?
+  issuedBy   User?      @relation("GiftIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
 
   @@unique([conferenceId, recipientKey, category])
   @@index([conferenceId])
+  @@index([conferenceId, category])
   @@index([userId])
+  @@index([issuedById])
   @@map("conference_gift_issuances")
 }
 
@@ -410,6 +428,7 @@ model ConferenceResource {
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
 
   @@index([conferenceId, type])
+  @@index([fileId])
   @@map("conference_resources")
 }
 
@@ -430,6 +449,7 @@ model ConferencePresentation {
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
 
   @@index([conferenceId])
+  @@index([fileId])
   @@map("conference_presentations")
 }
 

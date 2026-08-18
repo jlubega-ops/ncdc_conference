@@ -24,23 +24,26 @@ export async function POST(request, { params }) {
       conferenceId: id,
       rows,
       allowErrors,
+      createdById: session.user?.id ?? null,
     });
 
-    await logActivity({
-      session,
-      request,
-      action: ACTIVITY_ACTIONS.ATTENDEES_UPLOAD,
-      description: `Bulk attendee upload: ${results.created} created, ${results.updated} updated`,
-      resourceType: "conference",
-      resourceId: id,
-      conferenceId: id,
-      metadata: {
-        rowCount: rows.length,
-        created: results.created,
-        updated: results.updated,
-        emailed: results.emailed,
-      },
-    });
+    if (!body.silent) {
+      await logActivity({
+        session,
+        request,
+        action: ACTIVITY_ACTIONS.ATTENDEES_UPLOAD,
+        description: `Bulk attendee upload: ${results.created} created, ${results.updated} updated`,
+        resourceType: "conference",
+        resourceId: id,
+        conferenceId: id,
+        metadata: {
+          rowCount: rows.length,
+          created: results.created,
+          updated: results.updated,
+          emailed: results.emailed,
+        },
+      });
+    }
 
     return NextResponse.json({
       ok: true,

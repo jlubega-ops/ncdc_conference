@@ -238,6 +238,15 @@ export async function deleteUserByAdmin(userId, actingUserId) {
     }
   }
 
+  const giftCount = await prisma.conferenceGiftIssuance.count({
+    where: { userId },
+  });
+  if (giftCount > 0) {
+    throw new Error(
+      "This user was issued gifts and cannot be deleted. Gift records must be kept.",
+    );
+  }
+
   await deleteUserAndRelatedData(userId);
   return {
     ok: true,

@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileSpreadsheet, Plus } from "lucide-react";
+import { FileSpreadsheet, Plus, UserCog } from "lucide-react";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { TablePagination } from "@/components/ui/TablePagination";
 import { cn } from "@/lib/cn";
+import { paginateRows } from "@/lib/table/paginate";
+import { downloadCsv } from "@/lib/csv/download";
 import { GIFT_CATEGORY_PARTICIPANTS } from "@/lib/gifts/settings";
 
 const EMPTY_ADD_FORM = { firstName: "", lastName: "", email: "", comment: "" };
@@ -18,21 +21,14 @@ const EMPTY_ADD_FORM = { firstName: "", lastName: "", email: "", comment: "" };
 function ItemCountsLine({ itemCounts }) {
   const rows = (itemCounts || []).filter((item) => item.count > 0);
   if (rows.length === 0) {
-    return <span className="text-foreground/70">No items issued yet</span>;
+    return <span className="text-foreground/70">None yet</span>;
   }
   return (
     <span className="text-foreground">
       {rows.map((item, i) => (
         <span key={item.id}>
-          {i > 0 ? ", " : null}
+          {i > 0 ? " · " : null}
           <strong className="tabular-nums text-primary">{item.count}</strong> {item.name}
-          {typeof item.stock === "number" && item.stock > 0 ? (
-            <span className="text-foreground/80">
-              {" "}
-              (<span className="tabular-nums">{item.remaining ?? 0}</span> remaining of{" "}
-              <span className="tabular-nums">{item.stock}</span>)
-            </span>
-          ) : null}
         </span>
       ))}
     </span>
@@ -46,20 +42,25 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selected, setSelected] = useState(null);
   const [selectedItems, setSelectedItems] = useState({});
+  const [attendanceAction, setAttendanceAction] = useState("gift_only");
   const [busy, setBusy] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
   const [addItems, setAddItems] = useState({});
   const [addForce, setAddForce] = useState(false);
   const [addWarning, setAddWarning] = useState("");
+  const [issuersOpen, setIssuersOpen] = useState(false);
+  const [issuers, setIssuers] = useState(null);
+  const [issuersLoading, setIssuersLoading] = useState(false);
+  const [page, setPage] = useState(1);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const res = await fetch(`/api/admin/conference-gifts/${conferenceId}`);
@@ -67,15 +68,16 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
       if (!res.ok) throw new Error(json.error || "Could not load gifts.");
       setData(json);
       setCategory((prev) => {
+        if (prev === "all") return "all";
         const enabled = json.enabledCategories ?? [];
         if (prev && enabled.some((c) => c.value === prev)) return prev;
-        return enabled[0]?.value || GIFT_CATEGORY_PARTICIPANTS;
+        return "all";
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load gifts.");
-      setData(null);
+      if (!silent) setData(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [conferenceId]);
 
@@ -83,30 +85,68 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
     load();
   }, [load]);
 
-  const activeCategory =
-    category || data?.enabledCategories?.[0]?.value || GIFT_CATEGORY_PARTICIPANTS;
+  const combinedRoster = useMemo(() => {
+    if (!data) return [];
+    if (category === "all") {
+      return data.roster ?? Object.values(data.rostersByCategory || {}).flat();
+    }
+    return data.rostersByCategory?.[category] ?? [];
+  }, [data, category]);
 
   const roster = useMemo(() => {
-    const rows = data?.rostersByCategory?.[activeCategory] ?? data?.roster ?? [];
     const q = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (statusFilter === "issued") {
-        if (!row.isFullyIssued) return false;
-      }
-      if (statusFilter === "partial") {
-        if (!row.isIssued || row.isFullyIssued) return false;
-      }
-      if (statusFilter === "pending") {
-        if (row.isIssued) return false;
-      }
+    return combinedRoster.filter((row) => {
+      if (statusFilter === "issued" && !row.isFullyIssued) return false;
+      if (statusFilter === "partial" && (!row.isIssued || row.isFullyIssued)) return false;
+      if (statusFilter === "pending" && row.isIssued) return false;
       if (!q) return true;
-      const hay = [row.name, row.email, row.telephone, row.title, row.accessCode]
+      const hay = [
+        row.name,
+        row.email,
+        row.telephone,
+        row.title,
+        row.accessCode,
+        row.categoryLabel,
+        row.issuedByName,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [data, activeCategory, search, statusFilter]);
+  }, [combinedRoster, search, statusFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, category]);
+
+  const paged = useMemo(() => paginateRows(roster, page, 25), [roster, page]);
+
+  function exportGiftsList() {
+    downloadCsv(
+      "gifts.csv",
+      ["Name", "Role", "Email", "Status", "Items issued", "Issued by", "Registered by"],
+      roster.map((row) => [
+        row.name || "",
+        row.categoryLabel || row.speakerType || "",
+        row.email || "",
+        row.isFullyIssued ? "Issued" : row.isIssued ? "Partial" : "Not issued",
+        (row.issuedItemDetails || []).map((d) => `${d.name}×${d.quantity}`).join("; "),
+        row.issuedByName || "",
+        row.registeredByLabel || "",
+      ]),
+    );
+  }
+
+  function needsAttendanceChoice(row) {
+    return Boolean(
+      row?.isConferenceRegistered &&
+        row?.registrationStatus === "CONFIRMED" &&
+        row?.userId &&
+        data?.todayDayIndex &&
+        !row.attendedToday,
+    );
+  }
 
   function openIssue(row) {
     setSelected(row);
@@ -114,11 +154,10 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
     const hasAnyIssued = Boolean(row.isIssued);
     for (const item of data?.catalog ?? []) {
       const already = Number(row.issuedItems?.[item.id] ?? 0);
-      // Re-open: keep only previously issued items checked.
-      // First issue: select the full catalog by default.
       defaults[item.id] = hasAnyIssued ? (already > 0 ? already : 0) : item.quantity;
     }
     setSelectedItems(defaults);
+    setAttendanceAction(needsAttendanceChoice(row) ? "issue_and_mark" : "gift_only");
   }
 
   function openAddParticipant() {
@@ -146,15 +185,30 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipientKey: selected.recipientKey,
-          category: selected.category || activeCategory,
+          category: selected.category,
           items,
+          userId: selected.userId || undefined,
+          isConferenceRegistered: Boolean(selected.isConferenceRegistered),
+          attendanceAction: needsAttendanceChoice(selected)
+            ? attendanceAction
+            : "gift_only",
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Could not issue gifts.");
-      toast.success(selected.isIssued ? "Gifts updated." : "Gifts issued.");
+      const marked =
+        needsAttendanceChoice(selected) && attendanceAction === "issue_and_mark";
+      toast.success(
+        marked
+          ? selected.isIssued
+            ? "Gifts updated and attendance marked for today."
+            : "Gifts issued and attendance marked for today."
+          : selected.isIssued
+            ? "Gifts updated."
+            : "Gifts issued.",
+      );
       setSelected(null);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not issue gifts.");
     } finally {
@@ -198,8 +252,8 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
       setAddForm(EMPTY_ADD_FORM);
       setAddForce(false);
       setAddWarning("");
-      setCategory(GIFT_CATEGORY_PARTICIPANTS);
-      await load();
+      setCategory("all");
+      await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save and issue gifts.");
     } finally {
@@ -209,6 +263,29 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
 
   function downloadExcel() {
     window.open(`/api/admin/conference-gifts/${conferenceId}?format=excel`, "_blank");
+  }
+
+  async function openIssuersReport() {
+    setIssuersOpen(true);
+    setIssuersLoading(true);
+    try {
+      const res = await fetch(`/api/admin/conference-gifts/${conferenceId}?format=issuers`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not load admin report.");
+      setIssuers(json);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load admin report.");
+      setIssuers(null);
+    } finally {
+      setIssuersLoading(false);
+    }
+  }
+
+  function downloadIssuersExcel() {
+    window.open(
+      `/api/admin/conference-gifts/${conferenceId}?format=issuers-excel`,
+      "_blank",
+    );
   }
 
   if (loading && !data) {
@@ -228,23 +305,16 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
   const enabled = data.enabledCategories ?? [];
   const participantsEnabled = enabled.some((c) => c.value === GIFT_CATEGORY_PARTICIPANTS);
   const report = data.report;
-  const categoryCount =
-    data?.rostersByCategory?.[activeCategory]?.length ??
-    data?.roster?.length ??
-    0;
-  const activeCategoryReport = (report?.byCategory ?? []).find(
-    (row) => row.category === activeCategory,
-  );
+  const totalCount = combinedRoster.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-foreground">Gifts & awards</h3>
           <p className="text-sm text-foreground/80">
-            Registered members appear under Participants. Speakers use the Speakers tab. Use Add to
-            issue gifts to someone — if they are not registered for this conference they are added
-            to the gifts list only (not registered).
+            One list for participants, speakers, and MCs. Use Add for someone not already on a
+            roster — they stay gifts-only until they are registered.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -253,6 +323,14 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
               Add
             </Button>
           ) : null}
+          <Button variant="outline" size="sm" onClick={openIssuersReport}>
+            <Icon icon={UserCog} size="sm" />
+            Admin reports
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportGiftsList} disabled={!roster.length}>
+            <Icon icon={FileSpreadsheet} size="sm" />
+            Export list
+          </Button>
           <Button variant="outline" size="sm" onClick={downloadExcel}>
             <Icon icon={FileSpreadsheet} size="sm" />
             Download Excel
@@ -260,91 +338,72 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
         </div>
       </div>
 
-      <div className="space-y-3 rounded-md border border-border bg-surface px-4 py-3 text-sm">
-        <div className="flex flex-wrap gap-x-5 gap-y-2 text-foreground">
-          <span>
-            Fully issued:{" "}
-            <strong className="text-primary">{report?.overall?.issued ?? 0}</strong>
-          </span>
-          <span>
-            Pending:{" "}
-            <strong className="text-amber-800">{report?.overall?.pending ?? 0}</strong>
-          </span>
-          <span>
-            Recipients: <strong>{report?.overall?.recipients ?? 0}</strong>
-          </span>
-        </div>
-        <p className="text-foreground">
-          <span className="font-medium">Items issued (all categories): </span>
+      <div className="overflow-x-auto rounded-md border border-border">
+        <table className="min-w-full text-sm">
+          <thead className="bg-neutral-50 text-left text-xs uppercase text-foreground/80">
+            <tr>
+              <th className="px-3 py-2">Group</th>
+              <th className="px-3 py-2 text-right">Issued</th>
+              <th className="px-3 py-2 text-right">Pending</th>
+              <th className="px-3 py-2 text-right">Eligible</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-t border-border font-medium">
+              <td className="px-3 py-1.5">All</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-primary">
+                {report?.overall?.issued ?? 0}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-amber-800">
+                {report?.overall?.pending ?? 0}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums">
+                {report?.overall?.recipients ?? 0}
+              </td>
+            </tr>
+            {(report?.byCategory ?? []).map((row) => (
+              <tr key={row.category} className="border-t border-border text-foreground/80">
+                <td className="px-3 py-1.5">{row.label}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-primary">
+                  {row.fullyIssued}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-amber-800">
+                  {row.pending}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{row.recipients}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="border-t border-border px-3 py-2 text-sm text-foreground">
+          <span className="font-medium">Items issued: </span>
           <ItemCountsLine itemCounts={report?.overall?.itemCounts} />
         </p>
       </div>
 
-      {(report?.byCategory ?? []).length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {report.byCategory.map((row) => (
-            <button
-              key={row.category}
-              type="button"
-              onClick={() => setCategory(row.category)}
-              className={cn(
-                "max-w-full rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                activeCategory === row.category
-                  ? "border-primary bg-primary-light text-foreground"
-                  : "border-border text-foreground hover:border-primary/40",
-              )}
-            >
-              <p>
-                <span className="font-medium">{row.label}:</span>{" "}
-                <span className="font-semibold text-primary">{row.fullyIssued}</span> issued ·{" "}
-                <span className="font-semibold text-amber-800">{row.pending}</span> pending ·{" "}
-                <span className="font-semibold">{row.recipients}</span> eligible
-              </p>
-              <p className="mt-1 text-xs text-foreground/80">
-                <ItemCountsLine itemCounts={row.itemCounts} />
-              </p>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="flex gap-1 overflow-x-auto border-b border-border">
-        {enabled.map((cat) => {
-          const count = data?.rostersByCategory?.[cat.value]?.length ?? 0;
-          return (
-            <button
-              key={cat.value}
-              type="button"
-              onClick={() => setCategory(cat.value)}
-              className={cn(
-                "shrink-0 border-b-2 px-3 py-2 text-sm font-medium",
-                activeCategory === cat.value
-                  ? "border-primary text-primary"
-                  : "border-transparent text-foreground/80 hover:text-foreground",
-              )}
-            >
-              {cat.label}
-              <span className="ml-1.5 text-xs tabular-nums opacity-80">({count})</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {activeCategoryReport ? (
-        <p className="text-sm text-foreground">
-          <span className="font-medium">{activeCategoryReport.label} items issued: </span>
-          <ItemCountsLine itemCounts={activeCategoryReport.itemCounts} />
-        </p>
-      ) : null}
-
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[220px] flex-1">
+        <div className="min-w-[200px] flex-1">
           <Input
             label="Search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by name, email, access code…"
+            placeholder="Name, email, role, issued by…"
           />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-foreground">Role</label>
+          <select
+            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="all">All roles</option>
+            {enabled.map((cat) => (
+              <option key={cat.value} value={cat.value}>
+                {cat.label} ({data?.rostersByCategory?.[cat.value]?.length ?? 0})
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">Status</label>
@@ -363,51 +422,42 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
 
       <p className="text-sm text-foreground/80">
         Showing <strong className="text-foreground">{roster.length}</strong>
-        {search.trim() || statusFilter !== "all" ? (
+        {search.trim() || statusFilter !== "all" || category !== "all" ? (
           <>
             {" "}
-            of <strong className="text-foreground">{categoryCount}</strong>
+            of <strong className="text-foreground">{totalCount}</strong>
           </>
         ) : null}{" "}
-        {activeCategory === GIFT_CATEGORY_PARTICIPANTS
-          ? "registered members"
-          : "recipients"}{" "}
-        in this category.
+        people.
       </p>
 
       {roster.length === 0 ? (
         <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-foreground/80">
-          {categoryCount === 0
-            ? activeCategory === GIFT_CATEGORY_PARTICIPANTS
-              ? "No registered members for this conference yet."
-              : "No recipients in this category yet."
-            : "No recipients match your search / status filter."}
+          {totalCount === 0
+            ? "No gift recipients yet."
+            : "No recipients match your search / filters."}
         </p>
       ) : (
+        <>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full text-sm">
             <thead className="bg-neutral-50 text-left text-xs uppercase text-foreground/80">
               <tr>
                 <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">
-                  {activeCategory === GIFT_CATEGORY_PARTICIPANTS ? "Contact" : "Title"}
-                </th>
-                {activeCategory === GIFT_CATEGORY_PARTICIPANTS ? (
-                  <th className="px-4 py-3">Attendance</th>
-                ) : (
-                  <th className="px-4 py-3">Type</th>
-                )}
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Contact / title</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Items issued</th>
+                <th className="px-4 py-3">Items</th>
+                <th className="px-4 py-3">Issued by</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
-              {roster.map((row) => {
+              {paged.rows.map((row) => {
                 const details = row.issuedItemDetails || [];
                 return (
                   <tr
-                    key={row.recipientKey}
+                    key={`${row.category}:${row.recipientKey}`}
                     className={cn(
                       "border-t border-border",
                       row.isFullyIssued && "bg-primary-light/40",
@@ -416,8 +466,7 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
                     <td className="px-4 py-3 font-medium text-foreground">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{row.name}</span>
-                        {activeCategory === GIFT_CATEGORY_PARTICIPANTS &&
-                        row.isConferenceRegistered === false ? (
+                        {row.isConferenceRegistered === false && row.userId ? (
                           <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                             Gifts only
                           </span>
@@ -425,21 +474,11 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-foreground/80">
-                      {activeCategory === GIFT_CATEGORY_PARTICIPANTS ? (
-                        <>
-                          {row.email || "—"}
-                          {row.telephone ? (
-                            <p className="text-xs">{row.telephone}</p>
-                          ) : null}
-                        </>
-                      ) : (
-                        row.title || "—"
-                      )}
+                      {row.categoryLabel || row.speakerType || "—"}
                     </td>
                     <td className="px-4 py-3 text-foreground/80">
-                      {activeCategory === GIFT_CATEGORY_PARTICIPANTS
-                        ? `${row.daysAttended ?? 0}/${row.totalDays ?? 0} days`
-                        : row.speakerType || "—"}
+                      {row.email || row.title || "—"}
+                      {row.telephone ? <p className="text-xs">{row.telephone}</p> : null}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -473,6 +512,7 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
                         "—"
                       )}
                     </td>
+                    <td className="px-4 py-3 text-foreground/80">{row.issuedByName || "—"}</td>
                     <td className="px-4 py-3">
                       <Button variant="outline" size="sm" onClick={() => openIssue(row)}>
                         {row.isIssued ? "Update" : "Issue"}
@@ -484,6 +524,15 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={paged.page}
+          totalPages={paged.totalPages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPageChange={setPage}
+        />
+        </>
       )}
 
       <Modal
@@ -499,7 +548,8 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
           </p>
           {selected?.isConferenceRegistered === false ? (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Gifts list only — this person is not registered for the conference.
+              Gifts list only — this person is not registered for the conference, so attendance
+              cannot be marked here.
             </p>
           ) : null}
           {selected?.comment ? (
@@ -537,12 +587,118 @@ export function ConferenceAdminGiftsTab({ conferenceId }) {
               );
             })}
           </ul>
+          {needsAttendanceChoice(selected) ? (
+            <fieldset className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3">
+              <legend className="px-1 text-sm font-medium text-amber-950">
+                This person has not marked attendance today
+              </legend>
+              <label className="flex items-start gap-2 text-sm text-amber-950">
+                <input
+                  type="radio"
+                  className="mt-0.5"
+                  name="gift-attendance-action"
+                  checked={attendanceAction === "issue_and_mark"}
+                  onChange={() => setAttendanceAction("issue_and_mark")}
+                />
+                <span>Issue gifts and mark attendance for today</span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-amber-950">
+                <input
+                  type="radio"
+                  className="mt-0.5"
+                  name="gift-attendance-action"
+                  checked={attendanceAction === "gift_only"}
+                  onChange={() => setAttendanceAction("gift_only")}
+                />
+                <span>Issue gift only</span>
+              </label>
+            </fieldset>
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setSelected(null)} disabled={busy}>
               Cancel
             </Button>
             <Button variant="primary" onClick={issueGifts} disabled={busy}>
               {busy ? "Saving…" : selected?.isIssued ? "Update gifts" : "Confirm issue"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={issuersOpen}
+        onClose={() => !issuersLoading && setIssuersOpen(false)}
+        title="Gifts issued by admin"
+        size="xl"
+      >
+        <div className="space-y-4">
+          {issuersLoading ? (
+            <p className="text-sm text-muted-foreground">Loading admin summary…</p>
+          ) : !issuers?.issuers?.length ? (
+            <p className="text-sm text-foreground/80">No gifts have been issued yet.</p>
+          ) : (
+            <>
+              <p className="text-sm text-foreground/80">
+                {issuers.totals.admins} admin{issuers.totals.admins === 1 ? "" : "s"} ·{" "}
+                {issuers.totals.recipientCount} recipient
+                {issuers.totals.recipientCount === 1 ? "" : "s"} · {issuers.totals.totalItems}{" "}
+                items in total.
+              </p>
+              <div className="overflow-x-auto rounded-md border border-border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-neutral-50 text-left text-xs uppercase text-foreground/80">
+                    <tr>
+                      <th className="px-3 py-2">Admin</th>
+                      {(issuers.catalog ?? []).map((item) => (
+                        <th key={item.id} className="px-3 py-2 text-right">
+                          {item.name}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {issuers.issuers.map((row) => (
+                      <tr key={row.issuerId || row.name} className="border-t border-border">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-foreground">{row.name}</p>
+                          {row.email ? (
+                            <p className="text-xs text-foreground/70">{row.email}</p>
+                          ) : null}
+                        </td>
+                        {(row.items ?? []).map((item) => (
+                          <td key={item.id} className="px-3 py-2 text-right tabular-nums">
+                            {item.count}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">
+                          {row.totalItems}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-border bg-neutral-50 font-medium">
+                      <td className="px-3 py-2">Total</td>
+                      {(issuers.totals.items ?? []).map((item) => (
+                        <td key={item.id} className="px-3 py-2 text-right tabular-nums">
+                          {item.count}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {issuers.totals.totalItems}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIssuersOpen(false)}>
+              Close
+            </Button>
+            <Button variant="primary" onClick={downloadIssuersExcel} disabled={!issuers?.issuers?.length}>
+              <Icon icon={FileSpreadsheet} size="sm" />
+              Download Excel
             </Button>
           </div>
         </div>

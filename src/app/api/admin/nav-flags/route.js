@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireConferenceManager } from "@/lib/auth/guards";
+import { authorizeConferenceManager } from "@/lib/auth/guards";
 import { getManagedConferenceIds } from "@/lib/auth/conference-access";
 import { getDashboardNavFeatureFlags } from "@/lib/conferences/feature-visibility";
+import { jsonNoStore } from "@/lib/http/no-store";
 
 /**
  * Lightweight feature flags for dashboard sidebar — avoids loading full conference payloads.
  */
 export async function GET() {
-  const session = await requireConferenceManager();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeConferenceManager();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const managedIds = getManagedConferenceIds(session);
   const rows = await prisma.conference.findMany({
@@ -24,7 +26,7 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({
+  return jsonNoStore({
     flags: getDashboardNavFeatureFlags(rows),
   });
 }

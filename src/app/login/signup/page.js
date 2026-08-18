@@ -3,7 +3,7 @@ import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { PublicFormLayout } from "@/components/layout/PublicFormLayout";
 import { redirectIfAuthenticated } from "@/lib/auth/redirect-if-authenticated";
-import { getRegistrableConferences } from "@/lib/conferences/registrable";
+import { getRegistrableConferences } from "@/lib/conferences/registrable-list";
 
 export const metadata = {
   title: "Register | Conference Platform",

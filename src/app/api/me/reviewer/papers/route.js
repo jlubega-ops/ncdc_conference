@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireReviewer } from "@/lib/auth/guards";
+import { authorizeReviewer } from "@/lib/auth/guards";
+import { jsonNoStore } from "@/lib/http/no-store";
 import { mapPaperForAdmin } from "@/lib/papers/map";
 
 const userSelect = {
@@ -11,10 +12,11 @@ const userSelect = {
 };
 
 export async function GET() {
-  const session = await requireReviewer();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await authorizeReviewer();
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const session = access.session;
 
   const rows = await prisma.paperSubmission.findMany({
     where: { assignedReviewerId: session.user.id },
@@ -26,7 +28,7 @@ export async function GET() {
     orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
   });
 
-  return NextResponse.json({
+  return jsonNoStore({
     papers: rows.map((row) => ({
       ...mapPaperForAdmin(row),
       conference: row.conference,

@@ -31,8 +31,8 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
   });
   const [unassignTarget, setUnassignTarget] = useState(null);
 
-  const loadAdmins = useCallback(async () => {
-    setLoading(true);
+  const loadAdmins = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(`/api/admin/conferences/${conferenceId}/admins`);
       const data = await res.json();
@@ -43,11 +43,11 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load conference admins.");
-      setAdmins([]);
+      if (!silent) setAdmins([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [conferenceId]);
+  }, [conferenceId, canAssignProp]);
 
   useEffect(() => {
     loadAdmins();
@@ -180,7 +180,7 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
         </p>
       </div>
 
-      {loading ? (
+      {loading && admins.length === 0 ? (
         <p className="text-sm text-muted-foreground">Loading assigned admins…</p>
       ) : admins.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">

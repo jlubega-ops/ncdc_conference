@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { buildProfilePayload } from "@/lib/users/profile";
 import { rememberOrganisation } from "@/lib/organisations/service";
+import { adoptUserForConferencePerson } from "@/lib/users/merge-conference-person";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -167,7 +168,12 @@ export function validateAttendeeUploadRows(rows) {
  * Access codes are not emailed automatically — use Send access codes later.
  * @param {{ conferenceId: string; rows: ReturnType<typeof validateAttendeeUploadRows>; allowErrors?: boolean }} params
  */
-export async function confirmAttendeeUpload({ conferenceId, rows, allowErrors = true }) {
+export async function confirmAttendeeUpload({
+  conferenceId,
+  rows,
+  allowErrors = true,
+  createdById = null,
+}) {
   const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
   if (!conference) throw new Error("Conference not found.");
   if (conference.registrationMode !== "ADMIN_UPLOAD") {
@@ -209,10 +215,22 @@ export async function confirmAttendeeUpload({ conferenceId, rows, allowErrors = 
         email: row.email,
       };
 
-      let user = await prisma.user.findUnique({
-        where: { email: row.email },
-        include: { roles: true },
-      });
+      let user = (
+        await adoptUserForConferencePerson({
+          conferenceId,
+          email: row.email,
+          firstName: row.firstName,
+          lastName: row.lastName,
+          institution: row.institution,
+        })
+      ).user;
+
+      if (!user) {
+        user = await prisma.user.findUnique({
+          where: { email: row.email },
+          include: { roles: true },
+        });
+      }
 
       if (!user) {
         user = await prisma.user.create({
@@ -271,6 +289,8 @@ export async function confirmAttendeeUpload({ conferenceId, rows, allowErrors = 
             status: "CONFIRMED",
             formData,
             reviewedAt: new Date(),
+            registeredById: createdById || null,
+            registeredBySource: "UPLOAD",
           },
         });
       }

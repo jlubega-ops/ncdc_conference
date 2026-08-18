@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authorizeConferenceAccess } from "@/lib/auth/guards";
+import { jsonNoStore } from "@/lib/http/no-store";
 
 export async function GET(_request, { params }) {
   const { id } = await params;
@@ -8,7 +9,6 @@ export async function GET(_request, { params }) {
   if (!access.ok) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
-  const session = access.session;
 
   const [registrations, submissions, feedback, admins] = await Promise.all([
     prisma.conferenceRegistration.groupBy({
@@ -37,7 +37,7 @@ export async function GET(_request, { params }) {
   );
   const subTotal = submissions.reduce((n, s) => n + s._count._all, 0);
 
-  return NextResponse.json({
+  return jsonNoStore({
     registrations: {
       total: regTotal,
       pending: regByStatus.PENDING ?? 0,

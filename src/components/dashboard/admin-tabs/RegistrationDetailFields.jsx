@@ -31,6 +31,7 @@ export function RegistrationDetailFields({ row }) {
         : form.hasDisability || null,
     ],
     ["Registered", formatAdminDate(row.registeredAt)],
+    ["Registered by", row.registeredByLabel || null],
     [
       "Last access",
       row.lastAccessAt ? formatAdminDate(row.lastAccessAt) : "Never",

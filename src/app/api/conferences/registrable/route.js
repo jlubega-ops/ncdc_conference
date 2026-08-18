@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRegistrableConferences } from "@/lib/conferences/registrable";
+import { getRegistrableConferences } from "@/lib/conferences/registrable-list";
 
 export async function GET() {
   try {
