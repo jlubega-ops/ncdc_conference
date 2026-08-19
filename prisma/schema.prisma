@@ -453,6 +453,32 @@ model ConferencePresentation {
   @@map("conference_presentations")
 }
 
+/// Durable outbound email queue — processes in batches to avoid SMTP rate limits.
+model EmailQueue {
+  id           String    @id @default(cuid())
+  /// Logical job group — all items from one bulk-send share a jobId
+  jobId        String    @db.VarChar(64)
+  /// Who queued it (denormalized for log integrity)
+  actorId      String?
+  actorEmail   String?   @db.VarChar(255)
+  conferenceId String?
+  /// Payload type — determines which service function handles the item
+  type         String    @db.VarChar(64)
+  /// Serialized payload (registrationId, conferenceId, etc.) — no raw passwords
+  payload      Json
+  status       String    @default("pending") @db.VarChar(16) // pending | sent | failed | skipped
+  attempts     Int       @default(0)
+  error        String?   @db.Text
+  scheduledAt  DateTime  @default(now())
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([status, scheduledAt])
+  @@index([jobId])
+  @@index([conferenceId])
+  @@map("email_queue")
+}
+
 /// System-wide audit trail (visible to SUPERADMIN only)
 model ActivityLog {
   id           String   @id @default(cuid())

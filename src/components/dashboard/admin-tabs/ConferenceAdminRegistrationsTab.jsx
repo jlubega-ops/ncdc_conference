@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, Pencil, Plus, Trash2, Upload, Users, FileSpreadsheet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { KeyRound, Pencil, Plus, RefreshCw, Trash2, Upload, Users, FileSpreadsheet } from "lucide-react";
 import { AdminListFilters } from "./AdminListFilters";
 import { AttendeeUploadDialog } from "./AttendeeUploadDialog";
 import { AccessCodeDisplay } from "./AccessCodeDisplay";
@@ -97,6 +97,9 @@ export function ConferenceAdminRegistrationsTab({
   const [repsView, setRepsView] = useState(null);
   const [organisations, setOrganisations] = useState([]);
   const [page, setPage] = useState(1);
+  const [queueJob, setQueueJob] = useState(null); // { jobId, total, sent, failed, remaining, cooldownMs }
+  const [queueProcessing, setQueueProcessing] = useState(false);
+  const queueTimerRef = useRef(null);
 
   const organisationOptions = useMemo(() => {
     const set = new Set(organisations);
@@ -256,44 +259,103 @@ export function ConferenceAdminRegistrationsTab({
     });
   }
 
+  function clearQueueTimer() {
+    if (queueTimerRef.current) {
+      clearTimeout(queueTimerRef.current);
+      queueTimerRef.current = null;
+    }
+  }
+
+  const scheduleNextQueueBatch = useCallback(
+    (jobId, cooldownMs) => {
+      clearQueueTimer();
+      if (!cooldownMs || cooldownMs <= 0) return;
+      queueTimerRef.current = setTimeout(async () => {
+        setQueueProcessing(true);
+        try {
+          const res = await fetch("/api/email-queue/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Queue processing failed.");
+          setQueueJob((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  sent: (prev.sent ?? 0) + (data.sent ?? 0),
+                  failed: (prev.failed ?? 0) + (data.failed ?? 0),
+                  remaining: data.remaining ?? 0,
+                  cooldownMs: data.cooldownMs,
+                }
+              : null,
+          );
+          if (data.remaining > 0 && data.cooldownMs) {
+            scheduleNextQueueBatch(jobId, data.cooldownMs);
+          } else {
+            clearQueueTimer();
+            await load({ silent: true });
+          }
+        } catch {
+          /* best-effort; admin can use "Process next batch" button */
+        } finally {
+          setQueueProcessing(false);
+        }
+      }, cooldownMs);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [load],
+  );
+
   async function sendAccessCodesForIds(ids) {
     const list = [...ids];
     const total = list.length;
     if (total === 0) return;
     setBusy(true);
     setSendProgress({ current: 0, total });
-    let sent = 0;
-    const failed = [];
+    clearQueueTimer();
+    setQueueJob(null);
     try {
-      for (let i = 0; i < list.length; i += 1) {
-        const id = list[i];
-        const res = await fetch(
-          `/api/admin/conferences/${conferenceId}/registrations/send-access-codes`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ registrationIds: [id], silent: i < list.length - 1 }),
-          },
-        );
-        const data = await res.json();
-        if (!res.ok) {
-          failed.push({ id, message: data.error || "Could not send." });
-        } else {
-          sent += data.sent ?? 1;
-          if (Array.isArray(data.failed)) failed.push(...data.failed);
-        }
-        setSendProgress({ current: i + 1, total });
-      }
-      if (failed.length) {
-        toast.warning(
-          `Emailed ${sent} of ${total}. ${failed.length} could not be sent.`,
-        );
-      } else {
-        toast.success(`Access codes emailed to ${sent} attendee(s).`);
-      }
+      const res = await fetch(
+        `/api/admin/conferences/${conferenceId}/registrations/send-access-codes`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ registrationIds: list }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not send access codes.");
+
       setBulkConfirmOpen(false);
       setCheckedIds(new Set());
-      await load({ silent: true });
+
+      if (data.queued) {
+        // Large batch — set up queue tracking and auto-poll.
+        setQueueJob({
+          jobId: data.jobId,
+          total: data.total,
+          sent: data.sent ?? 0,
+          failed: data.failed ?? 0,
+          remaining: data.remaining ?? 0,
+          cooldownMs: data.cooldownMs,
+        });
+        toast.info(data.message || "Emails are being sent in batches.");
+        if (data.remaining > 0 && data.cooldownMs) {
+          scheduleNextQueueBatch(data.jobId, data.cooldownMs);
+        } else {
+          await load({ silent: true });
+        }
+      } else {
+        // Small batch — immediate result.
+        if (data.failed?.length) {
+          toast.warning(`Emailed ${data.sent} of ${total}. ${data.failed.length} could not be sent.`);
+        } else {
+          toast.success(`Access codes emailed to ${data.sent ?? total} attendee(s).`);
+        }
+        await load({ silent: true });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not send access codes.");
     } finally {
@@ -301,6 +363,45 @@ export function ConferenceAdminRegistrationsTab({
       setSendProgress(null);
     }
   }
+
+  async function processNextQueueBatch() {
+    if (!queueJob?.jobId || queueProcessing) return;
+    clearQueueTimer();
+    setQueueProcessing(true);
+    try {
+      const res = await fetch("/api/email-queue/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: queueJob.jobId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Queue processing failed.");
+      setQueueJob((prev) =>
+        prev
+          ? {
+              ...prev,
+              sent: (prev.sent ?? 0) + (data.sent ?? 0),
+              failed: (prev.failed ?? 0) + (data.failed ?? 0),
+              remaining: data.remaining ?? 0,
+              cooldownMs: data.cooldownMs,
+            }
+          : null,
+      );
+      if (data.remaining > 0 && data.cooldownMs) {
+        scheduleNextQueueBatch(queueJob.jobId, data.cooldownMs);
+      } else {
+        clearQueueTimer();
+        await load({ silent: true });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not process queue.");
+    } finally {
+      setQueueProcessing(false);
+    }
+  }
+
+  // Cleanup timer on unmount.
+  useEffect(() => () => clearQueueTimer(), []);
 
   async function review(action) {
     if (!selected) return;
@@ -541,6 +642,49 @@ export function ConferenceAdminRegistrationsTab({
         <p className="mb-4 rounded-md border border-border bg-neutral-50 px-3 py-2 text-sm text-foreground/80">
           This conference is open with no registration. Attendee lists are not collected here.
         </p>
+      ) : null}
+
+      {/* Queue progress banner — shown while a large batch send is in progress */}
+      {queueJob && queueJob.remaining > 0 ? (
+        <div className="mb-4 rounded-md border border-primary/30 bg-primary-light/40 px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-medium text-foreground">
+                Sending access codes in batches — {queueJob.sent} of {queueJob.total} sent so far
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {queueJob.remaining} remaining.{" "}
+                {queueProcessing
+                  ? "Processing next batch…"
+                  : queueJob.cooldownMs && queueJob.cooldownMs > 0
+                    ? `Next batch auto-sends in ${Math.ceil(queueJob.cooldownMs / 60000)} min.`
+                    : "Ready to process next batch."}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              icon={queueProcessing ? undefined : RefreshCw}
+              disabled={queueProcessing}
+              onClick={processNextQueueBatch}
+            >
+              {queueProcessing ? "Processing…" : "Process next batch now"}
+            </Button>
+          </div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${Math.round(((queueJob.total - queueJob.remaining) / queueJob.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ) : queueJob && queueJob.remaining === 0 ? (
+        <div className="mb-4 rounded-md border border-success/30 bg-success/5 px-4 py-2 text-sm text-success">
+          All {queueJob.total} access codes emailed successfully.{" "}
+          <button type="button" className="ml-1 underline" onClick={() => setQueueJob(null)}>
+            Dismiss
+          </button>
+        </div>
       ) : null}
 
       <AdminListFilters
@@ -866,6 +1010,12 @@ export function ConferenceAdminRegistrationsTab({
             Email a new access code to <strong>{checkedCount}</strong> selected attendee
             {checkedCount === 1 ? "" : "s"}. Any previous code for those people will stop working.
           </p>
+          {checkedCount > 20 ? (
+            <p className="rounded-md border border-primary/20 bg-primary-light/50 px-3 py-2 text-xs text-foreground">
+              More than 20 codes will be sent in batches of 20 every 5 minutes to avoid Gmail rate limits.
+              The first batch sends immediately. You can trigger the next batch early or let it run automatically.
+            </p>
+          ) : null}
           {sendProgress ? (
             <ActionProgress
               current={sendProgress.current}
@@ -887,7 +1037,7 @@ export function ConferenceAdminRegistrationsTab({
               disabled={busy || checkedCount === 0}
               onClick={() => sendAccessCodesForIds([...checkedIds])}
             >
-              {busy ? (sendProgress ? `Sending ${sendProgress.current}/${sendProgress.total}…` : "Sending…") : "Send codes"}
+              {busy ? "Sending…" : "Send codes"}
             </Button>
           </div>
         </div>

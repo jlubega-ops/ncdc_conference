@@ -26,7 +26,8 @@ const STAFF_IDLE_CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds
 const ATTENDEE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
- * Auth endpoints that return 401 for bad credentials — do not treat as session expiry.
+ * Auth handshake URLs — 401 here is expected (bad credentials, signed-out session)
+ * and must not be treated as idle session expiry.
  * @param {string} url
  */
 function isCredentialAuthUrl(url) {
@@ -35,6 +36,8 @@ function isCredentialAuthUrl(url) {
     return (
       path === "/api/auth/login" ||
       path === "/api/auth/access" ||
+      path === "/api/auth/logout" ||
+      path === "/api/auth/session" ||
       path === "/api/auth/forgot-password" ||
       path === "/api/auth/reset-password"
     );
@@ -60,16 +63,18 @@ export function SessionProvider({ children, initialSession = null }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [switchTarget, setSwitchTarget] = useState(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [, startTransition] = useTransition();
   const activityRef = useRef(true);
   const lastTouchRef = useRef(0);
   const redirectingRef = useRef(false);
+  const loggingOutRef = useRef(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
   const redirectToLogin = useCallback(
     (reason = "session_expired") => {
-      if (redirectingRef.current) return;
+      if (loggingOutRef.current || redirectingRef.current) return;
       if (pathname === "/login" || pathname?.startsWith("/login/") || pathname === "/access") {
         setSession(null);
         return;
@@ -95,7 +100,7 @@ export function SessionProvider({ children, initialSession = null }) {
   );
 
   const handleSessionExpired = useCallback(async () => {
-    if (redirectingRef.current) return;
+    if (loggingOutRef.current || redirectingRef.current) return;
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch {
@@ -105,9 +110,12 @@ export function SessionProvider({ children, initialSession = null }) {
   }, [redirectToLogin]);
 
   const refreshSession = useCallback(async () => {
+    if (loggingOutRef.current) return null;
     const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+    if (loggingOutRef.current) return null;
     const data = await res.json();
     const next = data.session ?? null;
+    if (loggingOutRef.current) return null;
     setSession(next);
     if (next) {
       lastTouchRef.current = Date.now();
@@ -133,13 +141,20 @@ export function SessionProvider({ children, initialSession = null }) {
   }, [refreshSession]);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
+    redirectingRef.current = true;
+    sessionRef.current = null;
+    setSigningOut(true);
     setSession(null);
-    startTransition(() => {
-      router.push("/");
-      router.refresh();
-    });
-  }, [router]);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    } catch {
+      /* Cookie may already be gone; still leave the app. */
+    }
+    // Full navigation unmounts the dashboard so leftover 401s cannot bounce to login.
+    window.location.replace("/");
+  }, []);
 
   const switchRole = useCallback(
     async (role) => {
@@ -181,11 +196,12 @@ export function SessionProvider({ children, initialSession = null }) {
     window.fetch = async (input, init) => {
       const res = await originalFetch(input, init);
       if (res.status !== 401) return res;
+      if (loggingOutRef.current || redirectingRef.current) return res;
+      if (!sessionRef.current) return res;
 
       const url = requestUrl(input);
       if (!url.includes("/api/")) return res;
       if (isCredentialAuthUrl(url)) return res;
-      if (!sessionRef.current && !initialSession) return res;
 
       // Clone-safe: redirect without consuming the body for callers
       void handleSessionExpired();
@@ -195,7 +211,7 @@ export function SessionProvider({ children, initialSession = null }) {
     return () => {
       window.fetch = originalFetch;
     };
-  }, [handleSessionExpired, initialSession]);
+  }, [handleSessionExpired]);
 
   // Sliding idle expiry for staff; absolute lifetime check for attendees
   useEffect(() => {
@@ -206,8 +222,10 @@ export function SessionProvider({ children, initialSession = null }) {
     activityRef.current = true;
 
     const checkSession = async () => {
+      if (loggingOutRef.current) return;
       try {
         const next = await refreshSession();
+        if (loggingOutRef.current) return;
         if (!next) {
           await handleSessionExpired();
         }
@@ -299,8 +317,14 @@ export function SessionProvider({ children, initialSession = null }) {
 
   return (
     <SessionContext.Provider value={value}>
-      {children}
-      <ForcedPasswordChangeDialog />
+      {signingOut ? (
+        <div className="flex min-h-full flex-1 items-center justify-center bg-background">
+          <p className="text-sm text-muted-foreground">Signing out…</p>
+        </div>
+      ) : (
+        children
+      )}
+      {signingOut ? null : <ForcedPasswordChangeDialog />}
       <RoleSwitchOverlay active={switching} targetRole={switchTarget} />
     </SessionContext.Provider>
   );

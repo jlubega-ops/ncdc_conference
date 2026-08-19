@@ -90,7 +90,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "User is required." }, { status: 400 });
     }
 
-    const { admins, alreadyAssigned, isSuperadmin } = await assignConferenceAdmin(
+    const { admins, alreadyAssigned, isSuperadmin, emailSent } = await assignConferenceAdmin(
       conferenceId,
       userId,
     );
@@ -100,6 +100,9 @@ export async function POST(request, { params }) {
     if (isSuperadmin) {
       message =
         "User is a system super admin (full access to all conferences). Conference admin role recorded for this conference.";
+    }
+    if (emailSent) {
+      message += " A staff activation email was sent to the user.";
     }
     await logActivity({
       session,
@@ -111,7 +114,7 @@ export async function POST(request, { params }) {
       resourceType: "user",
       resourceId: userId,
       conferenceId,
-      metadata: { alreadyAssigned, isSuperadmin },
+      metadata: { alreadyAssigned, isSuperadmin, emailSent: emailSent ?? false },
     });
     return NextResponse.json({
       admins,

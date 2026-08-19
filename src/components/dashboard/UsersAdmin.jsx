@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
-import { Loader2, Mail, Pencil, Trash2, UserPlus, FileSpreadsheet } from "lucide-react";
+import { Check, ClipboardCopy, Loader2, Mail, Pencil, RefreshCw, Trash2, UserPlus, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -103,6 +103,10 @@ export function UsersAdmin() {
   const [userToDelete, setUserToDelete] = useState(null);
   const [resendTarget, setResendTarget] = useState(null);
   const [resendingId, setResendingId] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resettingId, setResettingId] = useState(null);
+  const [resetResult, setResetResult] = useState(null); // { tempPassword, emailSent, message }
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(EMPTY_FORM);
@@ -276,6 +280,26 @@ export function UsersAdmin() {
     }
   }
 
+  async function confirmResetPassword() {
+    if (!resetTarget) return;
+    setResettingId(resetTarget.id);
+    try {
+      const res = await fetch(`/api/admin/users/${resetTarget.id}/reset-password`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not reset password.");
+      setResetTarget(null);
+      setResetResult(data);
+      setCopied(false);
+      await load({ silent: true });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not reset password.");
+    } finally {
+      setResettingId(null);
+    }
+  }
+
   async function confirmResendActivation() {
     if (!resendTarget) return;
     setResendingId(resendTarget.id);
@@ -285,8 +309,9 @@ export function UsersAdmin() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not resend activation.");
-      toast.success(data.message || "Activation email sent with a new temporary password.");
       setResendTarget(null);
+      setResetResult(data); // Reuse the same temp-password result dialog
+      setCopied(false);
       await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not resend activation.");
@@ -626,6 +651,21 @@ export function UsersAdmin() {
                               {isResending ? "Sending…" : "Resend activation"}
                             </Button>
                           ) : null}
+                          {user.roles.some((r) =>
+                            ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"].includes(r.role),
+                          ) ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={resettingId === user.id ? Loader2 : RefreshCw}
+                              disabled={Boolean(resettingId)}
+                              onClick={() => setResetTarget(user)}
+                              aria-label={`Reset password for ${user.name}`}
+                              className={resettingId === user.id ? "[&_svg]:animate-spin" : undefined}
+                            >
+                              Reset password
+                            </Button>
+                          ) : null}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -711,6 +751,69 @@ export function UsersAdmin() {
         variant="danger"
         loading={busy}
       />
+
+      <ConfirmModal
+        open={Boolean(resetTarget)}
+        onClose={() => !resettingId && setResetTarget(null)}
+        onConfirm={confirmResetPassword}
+        title="Reset password?"
+        message={
+          resetTarget
+            ? `A new temporary password will be generated for ${resetTarget.name} (${resetTarget.email}) and sent by email. The user must change it on next login. Their current password will stop working immediately.`
+            : ""
+        }
+        confirmLabel="Reset password"
+        loading={Boolean(resettingId)}
+      />
+
+      {/* Temp password result dialog — shown after a reset so admin can copy it manually */}
+      <Modal
+        open={Boolean(resetResult)}
+        onClose={() => setResetResult(null)}
+        title="Password reset"
+        size="sm"
+      >
+        {resetResult ? (
+          <div className="space-y-4">
+            {resetResult.emailSent ? (
+              <p className="text-sm text-foreground">
+                A new temporary password was emailed to the user. They must sign in and change it.
+              </p>
+            ) : (
+              <p className="text-sm text-warning">
+                The email could not be sent. Copy the temporary password below and share it with
+                the user manually.
+              </p>
+            )}
+            {resetResult.tempPassword ? (
+              <div className="rounded-md border border-border bg-neutral-50 px-4 py-3">
+                <p className="mb-1 text-xs text-muted-foreground">Temporary password</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-base tracking-widest text-foreground">
+                    {resetResult.tempPassword}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={copied ? Check : ClipboardCopy}
+                    onClick={() => {
+                      navigator.clipboard.writeText(resetResult.tempPassword).catch(() => {});
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    aria-label="Copy temporary password"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <Button variant="primary" onClick={() => setResetResult(null)}>
+              Done
+            </Button>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

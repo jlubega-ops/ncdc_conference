@@ -6,6 +6,8 @@ import { accountWelcomeEmail } from "@/lib/email/templates";
 import { getProfileFromUser } from "@/lib/users/profile";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 
+const STAFF_ROLES = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"];
+
 const userSelect = {
   id: true,
   email: true,
@@ -110,6 +112,7 @@ export async function assignConferenceAdmin(conferenceId, userId) {
   if (!user) throw new Error("User not found.");
 
   const isSuperadmin = user.roles.some((r) => r.role === "SUPERADMIN");
+  const hadNoStaffRoles = !user.roles.some((r) => STAFF_ROLES.includes(r.role));
 
   const alreadyAssigned = user.roles.some(
     (r) => r.role === "CONFERENCE_ADMIN" && r.conferenceId === conferenceId,
@@ -131,8 +134,33 @@ export async function assignConferenceAdmin(conferenceId, userId) {
     update: {},
   });
 
+  // If the user had no staff roles before, send an activation/upgrade email.
+  let emailSent = false;
+  if (hadNoStaffRoles && !alreadyAssigned) {
+    let tempPassword = null;
+    if (!user.passwordHash) {
+      // No password set at all — generate a temporary one.
+      tempPassword = generateTemporaryPassword();
+      await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash: await hashPassword(tempPassword), mustChangePassword: true },
+      });
+    }
+    const profile = getProfileFromUser(user);
+    const emailResult = await sendEmail({
+      to: user.email,
+      ...accountWelcomeEmail({
+        name: profile.fullName || user.name || user.email,
+        email: user.email,
+        password: tempPassword || undefined,
+        isUpgrade: true,
+      }),
+    });
+    emailSent = emailResult.ok;
+  }
+
   const admins = await listConferenceAdmins(conferenceId);
-  return { admins, alreadyAssigned, isSuperadmin };
+  return { admins, alreadyAssigned, isSuperadmin, emailSent };
 }
 
 /**

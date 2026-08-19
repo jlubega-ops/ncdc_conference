@@ -20,6 +20,9 @@ export const ACTIVITY_ACTIONS = {
   USER_UPDATE: "user.update",
   USER_DELETE: "user.delete",
   USER_RESEND_ACTIVATION: "user.resend_activation",
+  USER_RESET_PASSWORD: "user.reset_password",
+  USER_ROLE_ASSIGN: "user.role_assign",
+  USER_ROLE_REMOVE: "user.role_remove",
 
   // Conferences
   CONFERENCE_CREATE: "conference.create",
@@ -69,6 +72,10 @@ export const ACTIVITY_ACTIONS = {
 
   // Gifts
   GIFT_ISSUE: "gift.issue",
+
+  // Email queue
+  EMAIL_QUEUE_ENQUEUE: "email_queue.enqueue",
+  EMAIL_QUEUE_PROCESS: "email_queue.process",
 
   // Feedback / certificates / profile
   FEEDBACK_SUBMIT: "feedback.submit",

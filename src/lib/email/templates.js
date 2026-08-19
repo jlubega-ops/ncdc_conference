@@ -185,22 +185,61 @@ export function passwordResetEmail({ name, resetUrl }) {
   };
 }
 
-export function accountWelcomeEmail({ name, email, password }) {
+/**
+ * @param {{
+ *   name: string;
+ *   email: string;
+ *   password?: string;
+ *   isUpgrade?: boolean;
+ *   isReset?: boolean;
+ * }} opts
+ */
+export function accountWelcomeEmail({ name, email, password, isUpgrade = false, isReset = false }) {
   const appUrl = getAppUrl();
   const loginUrl = `${appUrl}/login`;
+
+  let title = "Account created";
+  let preheader = "Sign in and set your password";
+  let intro = `<p>An administrator created an account for you on the Conference Platform.</p>`;
+
+  if (isReset) {
+    title = "Password reset";
+    preheader = "Your password was reset by an administrator";
+    intro = `<p>An administrator has reset your password. Use the temporary password below to sign in, then set a new password.</p>`;
+  } else if (isUpgrade) {
+    title = "Staff access granted";
+    preheader = "You have been given staff access to the Conference Platform";
+    intro = `<p>An administrator has granted you staff access to the Conference Platform.</p>${
+      password
+        ? `<p>A temporary password has been set. Please sign in and change it immediately.</p>`
+        : `<p>Use your existing password to sign in at the link below.</p>`
+    }`;
+  }
+
+  const credRows = [
+    `<tr><td style="padding:12px 16px;"><strong>Email (username):</strong><br/>${email}</td></tr>`,
+    ...(password
+      ? [
+          `<tr><td style="padding:12px 16px;border-top:1px solid #e5e7eb;"><strong>Temporary password:</strong><br/><code style="font-size:16px;letter-spacing:1px;">${password}</code></td></tr>`,
+        ]
+      : []),
+    `<tr><td style="padding:12px 16px;border-top:1px solid #e5e7eb;"><strong>System login:</strong><br/><a href="${loginUrl}" style="color:#008e51;word-break:break-all;">${loginUrl}</a></td></tr>`,
+  ].join("");
+
   return {
-    subject: "Your conference platform account",
+    subject: isReset
+      ? "Your conference platform password was reset"
+      : isUpgrade
+        ? "Staff access granted — Conference Platform"
+        : "Your conference platform account",
     html: wrapEmailTemplate({
-      title: "Account created",
-      preheader: "Sign in and set your password",
+      title,
+      preheader,
       bodyHtml: `
         <p>Hello ${name},</p>
-        <p>An administrator created an account for you on the Conference Platform.</p>
-        <p>Use the credentials below to sign in. You will be asked to change your password on first login.</p>
+        ${intro}
         <table style="margin:20px 0;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;width:100%;">
-          <tr><td style="padding:12px 16px;"><strong>Email (username):</strong><br/>${email}</td></tr>
-          <tr><td style="padding:12px 16px;border-top:1px solid #e5e7eb;"><strong>Temporary password:</strong><br/><code style="font-size:16px;letter-spacing:1px;">${password}</code></td></tr>
-          <tr><td style="padding:12px 16px;border-top:1px solid #e5e7eb;"><strong>System login:</strong><br/><a href="${loginUrl}" style="color:#008e51;word-break:break-all;">${loginUrl}</a></td></tr>
+          ${credRows}
         </table>
       `,
       cta: { label: "Sign in to the system", href: loginUrl },

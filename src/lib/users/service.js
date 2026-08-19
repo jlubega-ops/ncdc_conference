@@ -116,6 +116,16 @@ export async function createUserByAdmin(data) {
 }
 
 /**
+ * Returns true if the user currently has no staff roles at all (only ATTENDEE or nothing).
+ * Used to decide whether to send an activation email when a staff role is first assigned.
+ * @param {{ roles: Array<{ role: string }> }} user
+ */
+function hasNoStaffRoles(user) {
+  const STAFF = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"];
+  return !user.roles.some((r) => STAFF.includes(r.role));
+}
+
+/**
  * @param {string} userId
  */
 export async function resendUserActivation(userId) {
@@ -143,11 +153,14 @@ export async function resendUserActivation(userId) {
     }),
   });
 
-  if (!emailResult.ok) {
-    throw new Error(emailResult.error || "Could not send activation email.");
-  }
-
-  return { ok: true };
+  return {
+    ok: true,
+    tempPassword,
+    emailSent: emailResult.ok,
+    message: emailResult.ok
+      ? "Activation email sent with a new temporary password."
+      : "A new temporary password was generated but the email could not be sent. Copy it manually.",
+  };
 }
 
 /**
@@ -160,7 +173,10 @@ export async function updateUserByAdmin(userId, data) {
     return { errors };
   }
 
-  const existing = await prisma.user.findUnique({ where: { id: userId } });
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { roles: true },
+  });
   if (!existing) {
     throw new Error("User not found.");
   }
@@ -172,7 +188,20 @@ export async function updateUserByAdmin(userId, data) {
     }
   }
 
+  // Detect if we're adding the user's first staff role — they'll need an activation email.
+  const wasAttendeeOnly = hasNoStaffRoles(existing);
+  const addingStaffRoles = values.roles.length > 0;
+
   const roleCreates = buildRoleCreates(values.roles, values.conferenceIds);
+
+  // If the user had no password (edge case: attendee account with only an access key),
+  // generate a temp password so they can sign in as staff.
+  let tempPassword = null;
+  let updatedPasswordHash = undefined;
+  if (wasAttendeeOnly && addingStaffRoles && !existing.passwordHash) {
+    tempPassword = generateTemporaryPassword();
+    updatedPasswordHash = await hashPassword(tempPassword);
+  }
 
   const user = await prisma.$transaction(async (tx) => {
     // Keep attendee/reviewer roles (assigned via conferences); only replace admin form roles.
@@ -188,6 +217,7 @@ export async function updateUserByAdmin(userId, data) {
         email: values.email,
         name: values.profile.fullName,
         profileData: values.profile,
+        ...(updatedPasswordHash ? { passwordHash: updatedPasswordHash, mustChangePassword: true } : {}),
         roles: {
           create: roleCreates.map((r) => ({
             role: r.role,
@@ -207,9 +237,30 @@ export async function updateUserByAdmin(userId, data) {
 
   await invalidateCertificatePdfsForUser(userId).catch(() => {});
 
+  // Send activation/welcome email if this is the first time staff roles are being added.
+  let emailSent = false;
+  if (wasAttendeeOnly && addingStaffRoles) {
+    const emailResult = await sendEmail({
+      to: values.email,
+      ...accountWelcomeEmail({
+        name: values.profile.fullName,
+        email: values.email,
+        password: tempPassword || undefined,
+        isUpgrade: true,
+      }),
+    });
+    emailSent = emailResult.ok;
+  }
+
   return {
     user: mapUserForAdminList(user),
-    message: "User updated.",
+    emailSent,
+    message:
+      wasAttendeeOnly && addingStaffRoles
+        ? emailSent
+          ? "User updated and staff account activation email sent."
+          : "User updated but activation email could not be sent."
+        : "User updated.",
   };
 }
 
@@ -289,6 +340,53 @@ export async function updateUserProfile(userId, data) {
   await invalidateCertificatePdfsForUser(userId).catch(() => {});
 
   return { profile: getProfileFromUser(user) };
+}
+
+/**
+ * Superadmin resets a user's password to a new temporary password and sends them an email.
+ * The user must change the password on next login (mustChangePassword = true).
+ * @param {string} userId
+ */
+export async function resetPasswordByAdmin(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { roles: true },
+  });
+  if (!user) throw new Error("User not found.");
+
+  const STAFF = ["SUPERADMIN", "CONFERENCE_ADMIN", "REVIEWER"];
+  const isStaff = user.roles.some((r) => STAFF.includes(r.role));
+  if (!isStaff) {
+    throw new Error("Password reset is only available for staff accounts (admins and reviewers). Attendees use access codes.");
+  }
+
+  const tempPassword = generateTemporaryPassword();
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash: await hashPassword(tempPassword),
+      mustChangePassword: true,
+    },
+  });
+
+  const emailResult = await sendEmail({
+    to: user.email,
+    ...accountWelcomeEmail({
+      name: user.name || user.email,
+      email: user.email,
+      password: tempPassword,
+      isReset: true,
+    }),
+  });
+
+  return {
+    ok: true,
+    tempPassword,
+    emailSent: emailResult.ok,
+    message: emailResult.ok
+      ? "Password reset. A new temporary password was sent by email."
+      : "Password reset but the email could not be sent. Copy the temporary password and share it manually.",
+  };
 }
 
 /**

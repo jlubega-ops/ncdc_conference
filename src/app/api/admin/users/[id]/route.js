@@ -23,9 +23,10 @@ export async function PATCH(request, { params }) {
       session,
       request,
       action: ACTIVITY_ACTIONS.USER_UPDATE,
-      description: `Updated user ${result.user.email}`,
+      description: `Updated user ${result.user.email}${result.emailSent ? " — staff activation email sent" : ""}`,
       resourceType: "user",
       resourceId: id,
+      metadata: result.emailSent != null ? { emailSent: result.emailSent } : undefined,
     });
     return NextResponse.json(result);
   } catch (err) {

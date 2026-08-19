@@ -432,6 +432,8 @@ export function ConferenceManager({ conferences }) {
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
   const [uploadingOrganiserLogo, setUploadingOrganiserLogo] = useState(false);
   const [programmeDrafts, setProgrammeDrafts] = useState({});
+  const [editingProgrammeIndex, setEditingProgrammeIndex] = useState(null);
+  const [programmeEditDraft, setProgrammeEditDraft] = useState(null); // { title, startTime, endTime }
   const [speakerDraft, setSpeakerDraft] = useState(emptySpeakerDraft);
   const [editingSpeakerId, setEditingSpeakerId] = useState(null);
   const [faqDraft, setFaqDraft] = useState(emptyFaqDraft);
@@ -809,10 +811,102 @@ export function ConferenceManager({ conferences }) {
   }
 
   function removeProgrammeEntry(index) {
+    if (editingProgrammeIndex === index) {
+      setEditingProgrammeIndex(null);
+      setProgrammeEditDraft(null);
+    }
     setEditing((prev) => {
       const next = Array.isArray(prev.programme) ? [...prev.programme] : [];
       next.splice(index, 1);
       return { ...prev, programme: next };
+    });
+  }
+
+  function startEditProgramme(item) {
+    setEditingProgrammeIndex(item.__index);
+    setProgrammeEditDraft({ title: item.title, startTime: item.startTime, endTime: item.endTime });
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith("programme_edit.")) delete next[key];
+      });
+      return next;
+    });
+  }
+
+  function cancelEditProgramme() {
+    setEditingProgrammeIndex(null);
+    setProgrammeEditDraft(null);
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith("programme_edit.")) delete next[key];
+      });
+      return next;
+    });
+  }
+
+  function updateProgrammeEditDraft(key, value) {
+    setProgrammeEditDraft((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[`programme_edit.${key}`];
+      delete next["programme_edit._form"];
+      return next;
+    });
+  }
+
+  function saveEditProgramme() {
+    if (editingProgrammeIndex === null || !programmeEditDraft) return;
+    const current = Array.isArray(editing.programme) ? editing.programme : [];
+    const original = current[editingProgrammeIndex];
+    if (!original) return;
+
+    const { date } = original;
+    const title = (programmeEditDraft.title ?? "").trim();
+    const { startTime, endTime } = programmeEditDraft;
+    const errs = {};
+
+    if (!title) errs["programme_edit.title"] = "Programme item is required.";
+    if (!startTime) errs["programme_edit.startTime"] = "Start time is required.";
+    if (!endTime) errs["programme_edit.endTime"] = "End time is required.";
+    if (startTime && endTime && startTime >= endTime)
+      errs["programme_edit.endTime"] = "End time must be after start time.";
+
+    const day = (editing.conferenceDays || []).find((d) => d.date === date);
+    if (startTime && endTime && startTime < endTime && day && !isProgrammeWithinDay({ startTime, endTime }, day)) {
+      errs["programme_edit.startTime"] = "Time must be within the conference day window.";
+      errs["programme_edit.endTime"] = "Time must be within the conference day window.";
+    }
+
+    // Check overlap against all other items (exclude the one being edited)
+    const others = current.filter((_, i) => i !== editingProgrammeIndex);
+    if (title && startTime && endTime && startTime < endTime && hasProgrammeOverlap(others, { date, title, startTime, endTime })) {
+      errs["programme_edit._form"] = "Programme times cannot overlap unless they share the same start and end time.";
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors((prev) => ({ ...prev, ...errs }));
+      return;
+    }
+
+    const updated = { date, title, startTime, endTime };
+    const next = [...current];
+    next[editingProgrammeIndex] = updated;
+    next.sort((a, b) => {
+      if (a.date !== b.date) return new Date(a.date) - new Date(b.date);
+      return (toMinutes(a.startTime) ?? 0) - (toMinutes(b.startTime) ?? 0);
+    });
+
+    onField("programme", next);
+    setEditingProgrammeIndex(null);
+    setProgrammeEditDraft(null);
+    setFieldErrors((prev) => {
+      const n = { ...prev };
+      Object.keys(n).forEach((key) => {
+        if (key.startsWith("programme_edit.")) delete n[key];
+      });
+      return n;
     });
   }
 
@@ -2464,27 +2558,100 @@ export function ConferenceManager({ conferences }) {
 
                                 {dayProgrammes.length ? (
                                   <div className="space-y-2">
-                                    {dayProgrammes.map((item) => (
-                                      <div
-                                        key={`${item.date}-${item.startTime}-${item.__index}`}
-                                        className="flex items-start gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
-                                      >
-                                        <p className="w-24 shrink-0 pt-0.5 text-xs font-bold tabular-nums text-foreground sm:w-28">
-                                          {formatProgrammeTimeSlot(item.startTime, item.endTime)}
-                                        </p>
-                                        <p className="min-w-0 flex-1 whitespace-pre-line text-sm font-medium text-primary">
-                                          {item.title}
-                                        </p>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          icon={Trash2}
-                                          onClick={() => removeProgrammeEntry(item.__index)}
+                                    {dayProgrammes.map((item) => {
+                                      const isEditing = editingProgrammeIndex === item.__index;
+                                      if (isEditing && programmeEditDraft) {
+                                        return (
+                                          <div
+                                            key={`edit-${item.__index}`}
+                                            className="space-y-3 rounded-md border border-primary/30 bg-primary-light/30 p-3"
+                                          >
+                                            <p className="text-xs font-semibold text-primary">Editing item</p>
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                                              <div className="w-full sm:w-36">
+                                                <TimeInput
+                                                  label="Start time"
+                                                  value={programmeEditDraft.startTime}
+                                                  error={fieldErrors["programme_edit.startTime"]}
+                                                  onChange={(value) => updateProgrammeEditDraft("startTime", value)}
+                                                />
+                                              </div>
+                                              <div className="w-full sm:w-36">
+                                                <TimeInput
+                                                  label="End time"
+                                                  value={programmeEditDraft.endTime}
+                                                  error={fieldErrors["programme_edit.endTime"]}
+                                                  onChange={(value) => updateProgrammeEditDraft("endTime", value)}
+                                                />
+                                              </div>
+                                              <div className="min-w-0 flex-1">
+                                                <Textarea
+                                                  label="Programme item"
+                                                  hint="Optional line breaks are shown on the programme."
+                                                  rows={3}
+                                                  value={programmeEditDraft.title}
+                                                  error={fieldErrors["programme_edit.title"]}
+                                                  onChange={(e) => updateProgrammeEditDraft("title", e.target.value)}
+                                                />
+                                              </div>
+                                            </div>
+                                            {fieldErrors["programme_edit._form"] ? (
+                                              <p className="text-xs text-error">
+                                                {fieldErrors["programme_edit._form"]}
+                                              </p>
+                                            ) : null}
+                                            <div className="flex gap-2">
+                                              <Button
+                                                variant="primary"
+                                                size="sm"
+                                                icon={Save}
+                                                onClick={saveEditProgramme}
+                                              >
+                                                Save changes
+                                              </Button>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={cancelEditProgramme}
+                                              >
+                                                Cancel
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div
+                                          key={`${item.date}-${item.startTime}-${item.__index}`}
+                                          className="flex items-start gap-3 rounded-md border border-border bg-surface px-3 py-2.5"
                                         >
-                                          Remove
-                                        </Button>
-                                      </div>
-                                    ))}
+                                          <p className="w-24 shrink-0 pt-0.5 text-xs font-bold tabular-nums text-foreground sm:w-28">
+                                            {formatProgrammeTimeSlot(item.startTime, item.endTime)}
+                                          </p>
+                                          <p className="min-w-0 flex-1 whitespace-pre-line text-sm font-medium text-primary">
+                                            {item.title}
+                                          </p>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            icon={Pencil}
+                                            onClick={() => startEditProgramme(item)}
+                                            aria-label="Edit programme item"
+                                          >
+                                            Edit
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            icon={Trash2}
+                                            onClick={() => removeProgrammeEntry(item.__index)}
+                                            aria-label="Remove programme item"
+                                          >
+                                            Remove
+                                          </Button>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 ) : (
                                   <p className="text-xs text-muted-foreground">
