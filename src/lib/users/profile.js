@@ -109,6 +109,7 @@ export function mapUserForAdminList(user) {
     name: user.name || profile.fullName,
     profile,
     mustChangePassword: Boolean(user.mustChangePassword),
+    temporaryPassword: user.mustChangePassword ? user.temporaryPassword || null : null,
     createdAt: user.createdAt,
     roles: roles.map((r) => ({
       role: r.role,

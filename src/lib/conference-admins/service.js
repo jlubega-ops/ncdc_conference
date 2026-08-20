@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
-import { generateTemporaryPassword } from "@/lib/auth/credentials";
+import { generateTemporaryPassword, pendingTemporaryPasswordData } from "@/lib/auth/credentials";
 import { sendEmail } from "@/lib/email/mailer";
 import { accountWelcomeEmail } from "@/lib/email/templates";
 import { getProfileFromUser } from "@/lib/users/profile";
@@ -13,6 +13,7 @@ const userSelect = {
   email: true,
   name: true,
   mustChangePassword: true,
+  temporaryPassword: true,
   profileData: true,
   createdAt: true,
 };
@@ -34,6 +35,7 @@ export function mapConferenceAdminRow(row, currentUserId = null) {
     gender: profile.gender,
     assignedAt: row.createdAt,
     accountActivated: !row.user.mustChangePassword,
+    temporaryPassword: row.user.mustChangePassword ? row.user.temporaryPassword || null : null,
     isCurrentUser: currentUserId === row.user.id,
   };
 }
@@ -143,7 +145,10 @@ export async function assignConferenceAdmin(conferenceId, userId) {
       tempPassword = generateTemporaryPassword();
       await prisma.user.update({
         where: { id: userId },
-        data: { passwordHash: await hashPassword(tempPassword), mustChangePassword: true },
+        data: {
+          passwordHash: await hashPassword(tempPassword),
+          ...pendingTemporaryPasswordData(tempPassword),
+        },
       });
     }
     const profile = getProfileFromUser(user);
@@ -199,7 +204,7 @@ export async function createAndAssignConferenceAdmin({
       name: profile.fullName,
       profileData: profile,
       passwordHash: await hashPassword(tempPassword),
-      mustChangePassword: true,
+      ...pendingTemporaryPasswordData(tempPassword),
       roles: {
         create: {
           role: "CONFERENCE_ADMIN",
@@ -219,7 +224,7 @@ export async function createAndAssignConferenceAdmin({
   });
 
   const admins = await listConferenceAdmins(conferenceId);
-  return { admins, userId: user.id, emailSent: true };
+  return { admins, userId: user.id, emailSent: true, tempPassword };
 }
 
 /**

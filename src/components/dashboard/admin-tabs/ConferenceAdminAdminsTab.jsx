@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Shield, UserMinus, UserPlus } from "lucide-react";
+import { ClipboardCopy, RefreshCw, Shield, UserMinus, UserPlus } from "lucide-react";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/cn";
 import { GENDER_OPTIONS } from "@/lib/registration/constants";
 import { formatAdminDate } from "./AdminTabShell";
+import { TempPasswordDialog } from "@/components/auth/TempPasswordDialog";
 
 /**
  * @param {{ conferenceId: string; canAssign?: boolean }} props
@@ -30,6 +31,7 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
     gender: "M",
   });
   const [unassignTarget, setUnassignTarget] = useState(null);
+  const [passwordDialog, setPasswordDialog] = useState(null);
 
   const loadAdmins = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -135,8 +137,17 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not create admin.");
       setAdmins(data.admins ?? []);
+      const createdEmail = newUser.email;
       setNewUser({ email: "", firstName: "", lastName: "", gender: "M" });
       toast.success(data.message || "Conference admin created and assigned.");
+      if (data.tempPassword) {
+        setPasswordDialog({
+          tempPassword: data.tempPassword,
+          emailSent: data.emailSent,
+          email: createdEmail,
+          title: "Conference admin created",
+        });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create admin.");
     } finally {
@@ -231,21 +242,40 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
                   </div>
                 </div>
                 {canAssign ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={UserMinus}
-                    disabled={busyId === admin.userId}
-                    onClick={() =>
-                      requestUnassign(
-                        admin.userId,
-                        admin.displayName || admin.email,
-                        false,
-                      )
-                    }
-                  >
-                    {busyId === admin.userId ? "Removing…" : "Unassign"}
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {!admin.accountActivated && admin.temporaryPassword ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={ClipboardCopy}
+                        onClick={() =>
+                          setPasswordDialog({
+                            tempPassword: admin.temporaryPassword,
+                            emailSent: null,
+                            email: admin.email,
+                            title: "Temporary password",
+                          })
+                        }
+                      >
+                        Copy password
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={UserMinus}
+                      disabled={busyId === admin.userId}
+                      onClick={() =>
+                        requestUnassign(
+                          admin.userId,
+                          admin.displayName || admin.email,
+                          false,
+                        )
+                      }
+                    >
+                      {busyId === admin.userId ? "Removing…" : "Unassign"}
+                    </Button>
+                  </div>
                 ) : null}
               </li>
             ))}
@@ -453,6 +483,15 @@ export function ConferenceAdminAdminsTab({ conferenceId, canAssign: canAssignPro
         cancelLabel="Cancel"
         variant="danger"
         loading={Boolean(unassignTarget && busyId === unassignTarget.userId)}
+      />
+
+      <TempPasswordDialog
+        open={Boolean(passwordDialog)}
+        onClose={() => setPasswordDialog(null)}
+        title={passwordDialog?.title || "Temporary password"}
+        emailSent={passwordDialog?.emailSent}
+        tempPassword={passwordDialog?.tempPassword}
+        email={passwordDialog?.email}
       />
     </div>
   );

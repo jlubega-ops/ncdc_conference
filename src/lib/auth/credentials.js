@@ -12,3 +12,20 @@ export function generateTemporaryPassword(length = 10) {
   }
   return result;
 }
+
+/**
+ * Prisma fields when issuing a default password the user must change.
+ * @param {string} plain
+ */
+export function pendingTemporaryPasswordData(plain) {
+  return {
+    mustChangePassword: true,
+    temporaryPassword: plain,
+  };
+}
+
+/** Prisma fields after the user sets their own password. */
+export const clearedTemporaryPasswordData = {
+  mustChangePassword: false,
+  temporaryPassword: null,
+};

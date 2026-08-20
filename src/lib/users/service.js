@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
-import { generateTemporaryPassword } from "@/lib/auth/credentials";
+import { generateTemporaryPassword, pendingTemporaryPasswordData } from "@/lib/auth/credentials";
 import { sendEmail } from "@/lib/email/mailer";
 import { accountWelcomeEmail } from "@/lib/email/templates";
 import { mapUserForAdminList, getProfileFromUser } from "@/lib/users/profile";
@@ -80,7 +80,7 @@ export async function createUserByAdmin(data) {
       name: values.profile.fullName,
       profileData: values.profile,
       passwordHash: await hashPassword(tempPassword),
-      mustChangePassword: true,
+      ...pendingTemporaryPasswordData(tempPassword),
       roles: {
         create: roleCreates.map((r) => ({
           role: r.role,
@@ -107,11 +107,12 @@ export async function createUserByAdmin(data) {
   });
 
   return {
-    user: mapUserForAdminList(user),
+    user: mapUserForAdminList({ ...user, temporaryPassword: tempPassword }),
     emailSent: emailResult.ok,
+    tempPassword,
     message: emailResult.ok
       ? "User created and activation email sent."
-      : "User created but activation email could not be sent.",
+      : "User created but activation email could not be sent. Copy the temporary password.",
   };
 }
 
@@ -140,7 +141,7 @@ export async function resendUserActivation(userId) {
     where: { id: userId },
     data: {
       passwordHash: await hashPassword(tempPassword),
-      mustChangePassword: true,
+      ...pendingTemporaryPasswordData(tempPassword),
     },
   });
 
@@ -217,7 +218,9 @@ export async function updateUserByAdmin(userId, data) {
         email: values.email,
         name: values.profile.fullName,
         profileData: values.profile,
-        ...(updatedPasswordHash ? { passwordHash: updatedPasswordHash, mustChangePassword: true } : {}),
+        ...(updatedPasswordHash
+          ? { passwordHash: updatedPasswordHash, ...pendingTemporaryPasswordData(tempPassword) }
+          : {}),
         roles: {
           create: roleCreates.map((r) => ({
             role: r.role,
@@ -365,7 +368,7 @@ export async function resetPasswordByAdmin(userId) {
     where: { id: userId },
     data: {
       passwordHash: await hashPassword(tempPassword),
-      mustChangePassword: true,
+      ...pendingTemporaryPasswordData(tempPassword),
     },
   });
 

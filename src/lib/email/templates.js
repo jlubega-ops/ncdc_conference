@@ -1,4 +1,5 @@
 import { getAppUrl } from "@/lib/email/config";
+import { brandAssets } from "@/lib/assets";
 
 const palette = {
   primary: "#1a5f4a",
@@ -18,7 +19,7 @@ const palette = {
  */
 export function wrapEmailTemplate({ title, preheader, bodyHtml, cta, brand: orgBrand }) {
   const appUrl = getAppUrl();
-  const logoUrl = orgBrand?.logoUrl || `${appUrl}/assets/logo.png`;
+  const logoUrl = orgBrand?.logoUrl || `${appUrl}${brandAssets.logo}`;
   const logoAlt = orgBrand?.name || "Conference";
   const footerLine =
     orgBrand?.footerLine ||

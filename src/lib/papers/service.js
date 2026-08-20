@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
-import { generateTemporaryPassword } from "@/lib/auth/credentials";
+import { generateTemporaryPassword, pendingTemporaryPasswordData } from "@/lib/auth/credentials";
 import { sendEmail } from "@/lib/email/mailer";
 import {
   paperApprovedEmail,
@@ -179,7 +179,7 @@ export async function assignPaperReviewer({
           email: normalizedEmail,
           name: displayName,
           passwordHash: await hashPassword(tempPassword),
-          mustChangePassword: true,
+          ...pendingTemporaryPasswordData(tempPassword),
         },
       });
       createdNew = true;

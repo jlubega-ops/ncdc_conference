@@ -1,6 +1,12 @@
+/**
+ * Bump this when replacing files in /public/assets with the same filename.
+ * Browsers and Next.js image cache keep serving the old file until the URL changes.
+ */
+export const ASSET_VERSION = "20260820";
+
 /** Brand assets in /public/assets */
 export const brandAssets = {
-  logo: "/assets/logo.png",
+  logo: `/assets/logo.png?v=${ASSET_VERSION}`,
   building: "/assets/bg_image.jpg",
 };
 

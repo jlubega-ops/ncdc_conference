@@ -20,9 +20,12 @@ export async function GET(_request, { params }) {
   const session = access.session;
 
   const admins = await listConferenceAdmins(id, session.user.id);
+  const canAssign = isSuperadminUser(session);
   return NextResponse.json({
-    admins,
-    canAssign: isSuperadminUser(session),
+    admins: canAssign
+      ? admins
+      : admins.map(({ temporaryPassword: _hidden, ...admin }) => admin),
+    canAssign,
   });
 }
 
@@ -81,7 +84,8 @@ export async function POST(request, { params }) {
         admins: result.admins,
         message: result.emailSent
           ? "Conference admin created and activation email sent."
-          : "Conference admin created but activation email could not be sent.",
+          : "Conference admin created but activation email could not be sent. Copy the temporary password.",
+        tempPassword: result.tempPassword || null,
       });
     }
 

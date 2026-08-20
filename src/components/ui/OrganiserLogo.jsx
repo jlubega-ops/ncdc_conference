@@ -38,7 +38,7 @@ export function OrganiserLogo({
       )}
       style={{ width: "auto" }}
       priority={priority}
-      unoptimized={isRuntimeUploadSrc(resolved)}
+      unoptimized={isRuntimeUploadSrc(resolved) || resolved.includes("/assets/")}
     />
   );
 }

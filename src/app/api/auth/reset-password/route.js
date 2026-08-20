@@ -34,6 +34,7 @@ export async function POST(request) {
       data: {
         passwordHash: await hashPassword(password),
         mustChangePassword: false,
+        temporaryPassword: null,
         passwordResetToken: null,
         passwordResetExpires: null,
       },

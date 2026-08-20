@@ -3,6 +3,7 @@ import { SiteChrome } from "@/components/layout/SiteChrome";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { OrganiserBrandProvider } from "@/components/layout/OrganiserBrandProvider";
 import { ToastProvider } from "@/components/ui/ToastProvider";
+import { brandAssets } from "@/lib/assets";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,6 +20,9 @@ export const metadata = {
   title: "Conference Management",
   description:
     "Discover open conferences, register for events, and manage programmes from one place.",
+  icons: {
+    icon: brandAssets.logo,
+  },
 };
 
 export default function RootLayout({ children }) {

@@ -63,6 +63,8 @@ model User {
   email              String    @unique
   passwordHash       String?
   mustChangePassword Boolean   @default(false)
+  /// Plaintext default password while mustChangePassword is true. Cleared after the user sets their own password.
+  temporaryPassword  String?   @db.VarChar(64)
   passwordResetToken String?   @unique
   passwordResetExpires DateTime?
   name               String?
