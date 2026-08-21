@@ -111,8 +111,11 @@ export function CertificatesList() {
         const downloading = downloadSlug === row.conference.slug;
         const canAct = row.eligible;
         const emailQueued = queuedEmailSlugs.has(row.conference.slug);
+        const emailFeatureOn = Boolean(
+          row.allowEmailRequest ?? row.conference?.certificateSettings?.allowEmailRequest,
+        );
         const canEmail = Boolean(
-          !emailQueued && (row.canEmail ?? (canAct && !row.emailCooldownMessage)),
+          emailFeatureOn && !emailQueued && (row.canEmail ?? (canAct && !row.emailCooldownMessage)),
         );
 
         return (
@@ -188,18 +191,20 @@ export function CertificatesList() {
                     <Icon icon={Download} size="sm" />
                     {downloading ? "Preparing certificate…" : "Download PDF"}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!canEmail}
-                    title={row.emailCooldownMessage || undefined}
-                    onClick={() => emailCertificate(row.conference.slug)}
-                  >
-                    <Icon icon={Mail} size="sm" />
-                    {canEmail ? "Send to email" : "Email sent"}
-                  </Button>
+                  {emailFeatureOn ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!canEmail}
+                      title={row.emailCooldownMessage || undefined}
+                      onClick={() => emailCertificate(row.conference.slug)}
+                    >
+                      <Icon icon={Mail} size="sm" />
+                      {canEmail ? "Send to email" : "Email sent"}
+                    </Button>
+                  ) : null}
                 </div>
-                {row.certificate?.emailedAt ? (
+                {emailFeatureOn && row.certificate?.emailedAt ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     {row.emailCooldownMessage
                       ? row.emailCooldownMessage
@@ -208,7 +213,7 @@ export function CertificatesList() {
                           timeStyle: "short",
                         })}. You can email again after 24 hours.`}
                   </p>
-                ) : canAct ? (
+                ) : emailFeatureOn && canAct ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Prefer Download PDF — email is limited to once per 24 hours because of Gmail
                     sending limits.

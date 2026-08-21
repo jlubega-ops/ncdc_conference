@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   recipientName: {
-    fontSize: 30,
+    fontSize: 26,
     fontFamily: "Times-Bold",
     color: C.text,
     textAlign: "center",
@@ -142,6 +142,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
     width: "82%",
+    textTransform: "uppercase",
+    // Never wrap — long names stay on one line (may clip at edges).
+    wrap: false,
   },
   narrative: {
     fontSize: 10.5,
@@ -352,7 +355,12 @@ export function CertificatePdfDocument({
               </View>
 
               <Text style={styles.certifyLine}>This is to certify that</Text>
-              <Text style={styles.recipientName}>{recipientName}</Text>
+              <Text style={styles.recipientName}>
+                {String(recipientName || "")
+                  .trim()
+                  .replace(/\s+/g, " ")
+                  .toLocaleUpperCase("en-US") || "PARTICIPANT"}
+              </Text>
 
               <Text style={styles.narrative}>
                 has participated in the conference below, attending {daysAttended} of {totalDays}{" "}

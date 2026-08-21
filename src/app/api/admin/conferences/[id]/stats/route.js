@@ -10,7 +10,7 @@ export async function GET(_request, { params }) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  const [registrations, submissions, feedback, admins] = await Promise.all([
+  const [registrations, submissions, feedback, admins, certificatesIssued, tourTotal] = await Promise.all([
     prisma.conferenceRegistration.groupBy({
       by: ["status"],
       where: { conferenceId: id },
@@ -25,6 +25,8 @@ export async function GET(_request, { params }) {
     prisma.userRole.count({
       where: { conferenceId: id, role: "CONFERENCE_ADMIN" },
     }),
+    prisma.conferenceCertificate.count({ where: { conferenceId: id } }),
+    prisma.conferenceTourRegistration.count({ where: { conferenceId: id } }),
   ]);
 
   const regByStatus = Object.fromEntries(
@@ -51,5 +53,7 @@ export async function GET(_request, { params }) {
     },
     feedback: { total: feedback },
     admins: { total: admins },
+    certificates: { issued: certificatesIssued },
+    tour: { total: tourTotal },
   });
 }

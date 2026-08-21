@@ -123,6 +123,7 @@ function buildUpdatePayload(input) {
     attendanceSettings: input.attendanceSettings ?? null,
     certificateSettings: input.certificateSettings ?? null,
     giftsSettings: input.giftsSettings ?? null,
+    tourSettings: input.tourSettings ?? null,
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,
@@ -143,11 +144,25 @@ export async function PATCH(request, { params }) {
 
   try {
     const input = await request.json();
+    const existing = await prisma.conference.findUnique({
+      where: { id },
+      select: { certificateSettings: true },
+    });
     const data = buildUpdatePayload(input);
     const updated = await prisma.conference.update({
       where: { id },
       data,
     });
+
+    const prevTemplate = String(existing?.certificateSettings?.templateUrl || "").trim();
+    const nextTemplate = String(updated?.certificateSettings?.templateUrl || "").trim();
+    if (prevTemplate !== nextTemplate) {
+      const { invalidateCertificatePdfsForConference } = await import(
+        "@/lib/certificates/service"
+      );
+      await invalidateCertificatePdfsForConference(updated.id).catch(() => {});
+    }
+
     await logActivity({
       session,
       request,

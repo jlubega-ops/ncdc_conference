@@ -127,6 +127,7 @@ function buildConferencePayload(input, userId) {
     attendanceSettings: input.attendanceSettings ?? null,
     certificateSettings: input.certificateSettings ?? null,
     giftsSettings: input.giftsSettings ?? null,
+    tourSettings: input.tourSettings ?? null,
     requiresPayment: Boolean(input.requiresPayment),
     paymentDetails: input.requiresPayment ? input.paymentDetails || null : null,
     paidContentVisibility: input.requiresPayment ? input.paidContentVisibility || null : null,

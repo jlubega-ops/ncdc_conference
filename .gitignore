@@ -42,6 +42,9 @@ yarn-error.log*
 
 /public/uploads
 
+# local certificate tuning previews
+/tmp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

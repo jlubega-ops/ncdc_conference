@@ -1,5 +1,6 @@
 import { allowsPublicRegistration } from "@/lib/conferences/registrable";
 import { normalizeGiftsSettings } from "@/lib/gifts/settings";
+import { normalizeTourSettings } from "@/lib/tour/settings";
 import { normalizeAttendanceSettings } from "@/lib/attendance/settings";
 import { normalizeCertificateSettings } from "@/lib/certificates/settings";
 import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
@@ -71,6 +72,13 @@ export function conferenceHasCertificates(conference) {
 }
 
 /**
+ * @param {any} conference
+ */
+export function conferenceHasTour(conference) {
+  return normalizeTourSettings(conference?.tourSettings).allowed;
+}
+
+/**
  * Whether an admin management tab should appear for this conference.
  * @param {string} tabId
  * @param {any} conference
@@ -81,8 +89,12 @@ export function isAdminConferenceTabVisible(tabId, conference) {
       return conferenceManagesRegistrations(conference);
     case "attendance":
       return conferenceHasAttendance(conference);
+    case "certificates":
+      return conferenceHasCertificates(conference);
     case "gifts":
       return conferenceHasGifts(conference);
+    case "tour":
+      return conferenceHasTour(conference);
     case "submissions":
       return conferenceAllowsPaperSubmissions(conference);
     case "feedback":

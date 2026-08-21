@@ -5,6 +5,7 @@ export const PUBLIC_UPLOAD_CATEGORIES = new Set([
   "speaker-photos",
   "conference-card-images",
   "organiser-logos",
+  "certificate-templates",
 ]);
 
 const SAFE_FILENAME = /^[A-Za-z0-9._-]+$/;

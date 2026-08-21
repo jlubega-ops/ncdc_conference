@@ -22,6 +22,10 @@ function parseConferenceDays(days) {
 
 /**
  * Computes conference lifecycle from schedule windows and conference days.
+ *
+ * Within the span of the first conference day start → last conference day end
+ * (including overnight gaps between days), status is "running" (In Progress).
+ *
  * @param {object} input
  */
 export function computeLifecycleStatus(input) {
@@ -32,11 +36,24 @@ export function computeLifecycleStatus(input) {
   const registrationCloseAt = parseDate(input.registrationCloseAt);
   const days = parseConferenceDays(input.conferenceDays);
 
-  if (days.some((d) => now >= d.start && now <= d.end)) {
-    return "running";
+  // Conference days take priority: once the event has started until it ends.
+  if (days.length > 0) {
+    const firstStart = days[0].start;
+    const lastEnd = days[days.length - 1].end;
+    if (now >= firstStart && now <= lastEnd) {
+      return "running";
+    }
+    if (now > lastEnd) {
+      return "completed";
+    }
   }
 
-  if (registrationOpenAt && registrationCloseAt && now >= registrationOpenAt && now <= registrationCloseAt) {
+  if (
+    registrationOpenAt &&
+    registrationCloseAt &&
+    now >= registrationOpenAt &&
+    now <= registrationCloseAt
+  ) {
     return "registration_open";
   }
 
@@ -44,11 +61,9 @@ export function computeLifecycleStatus(input) {
     return "cfp_open";
   }
 
-  if (days.length > 0) {
-    if (now < days[0].start) return "upcoming";
-    if (now > days[days.length - 1].end) return "completed";
+  if (days.length > 0 && now < days[0].start) {
+    return "upcoming";
   }
 
   return "upcoming";
 }
-

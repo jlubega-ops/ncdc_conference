@@ -98,8 +98,11 @@ export function ConferenceCertificateTab({ slug }) {
   }
 
   const canAct = row.eligible;
+  const emailFeatureOn = Boolean(
+    row.allowEmailRequest ?? row.conference?.certificateSettings?.allowEmailRequest,
+  );
   const canEmail = Boolean(
-    !emailQueued && (row.canEmail ?? (canAct && !row.emailCooldownMessage)),
+    emailFeatureOn && !emailQueued && (row.canEmail ?? (canAct && !row.emailCooldownMessage)),
   );
   const emailLabel = canEmail ? "Send to email" : "Email sent";
 
@@ -163,16 +166,18 @@ export function ConferenceCertificateTab({ slug }) {
           <Icon icon={Download} size="sm" />
           {downloadBusy ? "Preparing certificate…" : "Download PDF"}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!canEmail}
-          title={row.emailCooldownMessage || undefined}
-          onClick={emailCertificate}
-        >
-          <Icon icon={Mail} size="sm" />
-          {emailLabel}
-        </Button>
+        {emailFeatureOn ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!canEmail}
+            title={row.emailCooldownMessage || undefined}
+            onClick={emailCertificate}
+          >
+            <Icon icon={Mail} size="sm" />
+            {emailLabel}
+          </Button>
+        ) : null}
       </div>
       {downloadBusy ? (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -181,7 +186,7 @@ export function ConferenceCertificateTab({ slug }) {
         </p>
       ) : null}
 
-      {row.certificate?.emailedAt ? (
+      {emailFeatureOn && row.certificate?.emailedAt ? (
         <p className="mt-2 text-xs text-muted-foreground">
           {row.emailCooldownMessage
             ? row.emailCooldownMessage
@@ -190,7 +195,7 @@ export function ConferenceCertificateTab({ slug }) {
                 timeStyle: "short",
               })}. You can email again after 24 hours.`}
         </p>
-      ) : canAct ? (
+      ) : emailFeatureOn && canAct ? (
         <p className="mt-2 text-xs text-muted-foreground">
           Prefer Download PDF if you can — email is limited to once per 24 hours per person because
           of Gmail sending limits.

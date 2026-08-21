@@ -19,6 +19,7 @@ import {
 } from "@/lib/conferences/utils";
 import { normalizeFeedbackSettings } from "@/lib/feedback/questions";
 import { normalizeGiftsSettings, applyGiftCategoryAvailability } from "@/lib/gifts/settings";
+import { normalizeTourSettings } from "@/lib/tour/settings";
 import { normalizeAttendanceSettings } from "@/lib/attendance/settings";
 import { normalizeCertificateSettings } from "@/lib/certificates/settings";
 import { normalizeConferenceDays } from "@/lib/attendance/utils";
@@ -137,6 +138,7 @@ export function mapConferenceForUi(conference) {
       normalizeGiftsSettings(conference.giftsSettings),
       speakers,
     ),
+    tourSettings: normalizeTourSettings(conference.tourSettings),
     requiresPayment: Boolean(conference.requiresPayment),
     paymentDetails: normalizePaymentDetails(conference.paymentDetails),
     paidContentVisibility: normalizePaidContentVisibility(conference.paidContentVisibility),

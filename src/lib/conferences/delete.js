@@ -25,9 +25,11 @@ export async function getConferenceDeleteImpact(conferenceId) {
     presentationCount,
     accessKeyCount,
     giftIssuanceCount,
+    tourRegistrationCount,
     adminRoleCount,
     registrations,
     giftUsers,
+    tourUsers,
   ] = await Promise.all([
     prisma.conferenceRegistration.count({ where: { conferenceId } }),
     prisma.conferenceAttendance.count({ where: { conferenceId } }),
@@ -38,6 +40,7 @@ export async function getConferenceDeleteImpact(conferenceId) {
     prisma.conferencePresentation.count({ where: { conferenceId } }),
     prisma.conferenceAccessKey.count({ where: { conferenceId } }),
     prisma.conferenceGiftIssuance.count({ where: { conferenceId } }),
+    prisma.conferenceTourRegistration.count({ where: { conferenceId } }),
     prisma.userRole.count({
       where: {
         conferenceId,
@@ -52,12 +55,17 @@ export async function getConferenceDeleteImpact(conferenceId) {
       where: { conferenceId, userId: { not: null } },
       select: { userId: true },
     }),
+    prisma.conferenceTourRegistration.findMany({
+      where: { conferenceId },
+      select: { userId: true },
+    }),
   ]);
 
   const uniqueUserIds = [
     ...new Set([
       ...registrations.map((r) => r.userId),
       ...giftUsers.map((r) => r.userId).filter(Boolean),
+      ...tourUsers.map((r) => r.userId).filter(Boolean),
     ]),
   ];
   let orphanAttendeeCount = 0;
@@ -82,6 +90,7 @@ export async function getConferenceDeleteImpact(conferenceId) {
     presentationCount,
     accessKeyCount,
     giftIssuanceCount,
+    tourRegistrationCount,
     adminRoleCount,
     orphanAttendeeCount,
     sharedAttendeeCount: Math.max(0, uniqueUserIds.length - orphanAttendeeCount),
@@ -114,6 +123,13 @@ export async function deleteConferenceWithCascade(conferenceId) {
       user: { select: { id: true, email: true, name: true } },
     },
   });
+  const tourOnlyRows = await prisma.conferenceTourRegistration.findMany({
+    where: { conferenceId },
+    select: {
+      userId: true,
+      user: { select: { id: true, email: true, name: true } },
+    },
+  });
 
   const seenUserIds = new Set();
   /** @type {Array<{ id: string; email: string; name: string | null }>} */
@@ -139,6 +155,9 @@ export async function deleteConferenceWithCascade(conferenceId) {
     await considerOrphan(row.user);
   }
   for (const row of giftOnlyRows) {
+    await considerOrphan(row.user);
+  }
+  for (const row of tourOnlyRows) {
     await considerOrphan(row.user);
   }
 

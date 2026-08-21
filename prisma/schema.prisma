@@ -87,6 +87,8 @@ model User {
   certificates           ConferenceCertificate[]
   giftIssuances          ConferenceGiftIssuance[] @relation("GiftRecipient")
   giftsIssued            ConferenceGiftIssuance[] @relation("GiftIssuedBy")
+  tourRegistrations      ConferenceTourRegistration[] @relation("TourRegistrant")
+  toursRegistered        ConferenceTourRegistration[] @relation("TourRegisteredBy")
   representedAsPrincipal ConferenceRepresentative[] @relation("RepresentedPrincipals")
   actingAsRepresentative ConferenceRepresentative[] @relation("ActingRepresentatives")
 
@@ -169,6 +171,8 @@ model Conference {
   certificateSettings  Json?
   /// Awards & gifts: applicable flag, items, recipient categories
   giftsSettings        Json?
+  /// Extra registrations: { tour: { allowed } }
+  tourSettings         Json?
   requiresPayment      Boolean                   @default(false)
   paymentDetails       Json?
   paidContentVisibility Json?
@@ -193,6 +197,7 @@ model Conference {
   presentations  ConferencePresentation[]
   certificates   ConferenceCertificate[]
   giftIssuances  ConferenceGiftIssuance[]
+  tourRegistrations ConferenceTourRegistration[]
 
   @@index([publicationStatus])
   @@index([featured])
@@ -316,6 +321,7 @@ model ConferenceCertificate {
   daysAttended      Int
   totalDays         Int
   issuedAt          DateTime @default(now())
+  downloadedAt      DateTime?
   emailedAt         DateTime?
 
   conference Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
@@ -412,6 +418,30 @@ model ConferenceGiftIssuance {
   @@index([userId])
   @@index([issuedById])
   @@map("conference_gift_issuances")
+}
+
+/// Conference tour registration (separate from conference attendance registration).
+model ConferenceTourRegistration {
+  id             String   @id @default(cuid())
+  conferenceId   String
+  userId         String
+  /// Amount paid (currency units, e.g. UGX). Required.
+  amountPaid     Decimal  @db.Decimal(14, 2)
+  organisation   String?
+  notes          String?  @db.Text
+  registeredAt   DateTime @default(now())
+  registeredById String?
+  updatedAt      DateTime @updatedAt
+
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  user         User       @relation("TourRegistrant", fields: [userId], references: [id], onDelete: Cascade)
+  registeredBy User?      @relation("TourRegisteredBy", fields: [registeredById], references: [id], onDelete: SetNull)
+
+  @@unique([conferenceId, userId])
+  @@index([conferenceId])
+  @@index([userId])
+  @@index([registeredById])
+  @@map("conference_tour_registrations")
 }
 
 model ConferenceResource {

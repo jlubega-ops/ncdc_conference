@@ -18,7 +18,9 @@ import { ConferenceAdminRegistrationsTab } from "@/components/dashboard/admin-ta
 import { ConferenceAdminSubmissionsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminSubmissionsTab";
 import { ConferenceAdminFeedbackTab } from "@/components/dashboard/admin-tabs/ConferenceAdminFeedbackTab";
 import { ConferenceAdminAttendanceTab } from "@/components/dashboard/admin-tabs/ConferenceAdminAttendanceTab";
+import { ConferenceAdminCertificatesTab } from "@/components/dashboard/admin-tabs/ConferenceAdminCertificatesTab";
 import { ConferenceAdminGiftsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminGiftsTab";
+import { ConferenceAdminTourTab } from "@/components/dashboard/admin-tabs/ConferenceAdminTourTab";
 import { ConferenceAdminAdminsTab } from "@/components/dashboard/admin-tabs/ConferenceAdminAdminsTab";
 import { ConferenceAdminMaterialsHub } from "@/components/dashboard/admin-tabs/ConferenceAdminMaterialsHub";
 import { isAdminConferenceTabVisible } from "@/lib/conferences/feature-visibility";
@@ -27,7 +29,9 @@ const BASE_TABS = [
   { id: "info", label: "Info", countKey: null },
   { id: "registrations", label: "Registrations", countKey: "registrations" },
   { id: "attendance", label: "Attendance", countKey: null },
+  { id: "certificates", label: "Certificates", countKey: "certificates" },
   { id: "gifts", label: "Gifts & awards", countKey: null },
+  { id: "tour", label: "Conference tour", countKey: "tour" },
   { id: "submissions", label: "Paper submissions", countKey: "submissions" },
   { id: "feedback", label: "Feedback", countKey: "feedback" },
   { id: "materials", label: "Materials", countKey: null },
@@ -202,6 +206,8 @@ export function ConferenceAdminDetail({
             if (stats && tab.countKey === "submissions") count = stats.submissions?.total;
             if (stats && tab.countKey === "feedback") count = stats.feedback?.total;
             if (stats && tab.countKey === "admins") count = stats.admins?.total;
+            if (stats && tab.countKey === "certificates") count = stats.certificates?.issued;
+            if (stats && tab.countKey === "tour") count = stats.tour?.total;
             return (
               <button
                 key={tab.id}
@@ -243,8 +249,14 @@ export function ConferenceAdminDetail({
           {activeTab === "attendance" ? (
             <ConferenceAdminAttendanceTab conferenceId={conference.id} />
           ) : null}
+          {activeTab === "certificates" ? (
+            <ConferenceAdminCertificatesTab conferenceId={conference.id} />
+          ) : null}
           {activeTab === "gifts" ? (
             <ConferenceAdminGiftsTab conferenceId={conference.id} />
+          ) : null}
+          {activeTab === "tour" ? (
+            <ConferenceAdminTourTab conferenceId={conference.id} />
           ) : null}
           {activeTab === "submissions" ? (
             <ConferenceAdminSubmissionsTab conferenceId={conference.id} />

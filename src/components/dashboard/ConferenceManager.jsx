@@ -86,6 +86,10 @@ import {
   countSpeakersByGiftCategory,
   normalizeGiftsSettings,
 } from "@/lib/gifts/settings";
+import {
+  DEFAULT_TOUR_SETTINGS,
+  normalizeTourSettings,
+} from "@/lib/tour/settings";
 
 function emptyConference() {
   return {
@@ -132,6 +136,7 @@ function emptyConference() {
     attendanceSettings: normalizeAttendanceSettings(DEFAULT_ATTENDANCE_SETTINGS),
     certificateSettings: normalizeCertificateSettings(DEFAULT_CERTIFICATE_SETTINGS),
     giftsSettings: normalizeGiftsSettings(DEFAULT_GIFTS_SETTINGS),
+    tourSettings: normalizeTourSettings(DEFAULT_TOUR_SETTINGS),
     requiresPayment: false,
     paymentDetails: emptyPaymentDetails(),
     paidContentVisibility: { ...DEFAULT_PAID_VISIBILITY },
@@ -251,6 +256,7 @@ function normalizeForSubmit(form, publicationStatusOverride) {
       normalizeGiftsSettings(form.giftsSettings),
       cascaded.speakers,
     ),
+    tourSettings: normalizeTourSettings(form.tourSettings),
   };
 }
 
@@ -326,7 +332,11 @@ function fieldBelongsToSection(key, sectionId) {
     );
   }
   if (sectionId === "registration") {
-    return key === "registrationMode" || key === "reference";
+    return (
+      key === "registrationMode" ||
+      key === "reference" ||
+      key.startsWith("tourSettings")
+    );
   }
   if (sectionId === "media") return key === "cardImage";
   if (sectionId === "cfp") {
@@ -431,6 +441,7 @@ export function ConferenceManager({ conferences }) {
   const [loading, setLoading] = useState(false);
   const [uploadingCardImage, setUploadingCardImage] = useState(false);
   const [uploadingOrganiserLogo, setUploadingOrganiserLogo] = useState(false);
+  const [uploadingCertificateTemplate, setUploadingCertificateTemplate] = useState(false);
   const [programmeDrafts, setProgrammeDrafts] = useState({});
   const [editingProgrammeIndex, setEditingProgrammeIndex] = useState(null);
   const [programmeEditDraft, setProgrammeEditDraft] = useState(null); // { title, startTime, endTime }
@@ -515,6 +526,7 @@ export function ConferenceManager({ conferences }) {
         totalDays: normalizeConferenceDays(conf.conferenceDays).length || 1,
       }),
       giftsSettings: normalizeGiftsSettings(conf.giftsSettings),
+      tourSettings: normalizeTourSettings(conf.tourSettings),
       ...mapConferenceFormExtras(conf),
     });
     setProgrammeDrafts({});
@@ -599,6 +611,7 @@ export function ConferenceManager({ conferences }) {
         totalDays: normalizeConferenceDays(conf.conferenceDays).length || 1,
       }),
       giftsSettings: normalizeGiftsSettings(conf.giftsSettings),
+      tourSettings: normalizeTourSettings(conf.tourSettings),
       ...mapConferenceFormExtras(conf),
     };
 
@@ -1406,6 +1419,48 @@ export function ConferenceManager({ conferences }) {
       toast.error(err instanceof Error ? err.message : "Could not upload logo.");
     } finally {
       setUploadingOrganiserLogo(false);
+    }
+  }
+
+  /**
+   * @param {React.ChangeEvent<HTMLInputElement>} event
+   */
+  async function onCertificateTemplateSelected(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Only A4 landscape PDF templates are supported.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("PDF exceeds 8MB limit.");
+      return;
+    }
+
+    setUploadingCertificateTemplate(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/admin/uploads/certificate-template", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not upload certificate template.");
+      }
+      onField("certificateSettings", {
+        ...normalizeCertificateSettings(editing.certificateSettings, {
+          totalDays: (editing.conferenceDays || []).filter((d) => d.date).length || 1,
+        }),
+        templateUrl: data.url,
+      });
+      toast.success(data.message || "Certificate template uploaded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not upload certificate template.");
+    } finally {
+      setUploadingCertificateTemplate(false);
     }
   }
 
@@ -2348,6 +2403,39 @@ export function ConferenceManager({ conferences }) {
                         The public Register button will be hidden for this conference.
                       </p>
                     ) : null}
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <h4 className="text-sm font-semibold text-foreground">
+                        More registration
+                      </h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Optional extra registration lists managed by admins. These are separate
+                        from conference attendance registration.
+                      </p>
+                      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 hover:border-primary/40">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={Boolean(editing.tourSettings?.allowed)}
+                          onChange={(e) =>
+                            onField("tourSettings", {
+                              ...normalizeTourSettings(editing.tourSettings),
+                              allowed: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-foreground">
+                            Conference tour registration
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            When on, admins can register people for the conference tour. Tour-only
+                            people do not appear on the main registrations list unless added there
+                            separately.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 ) : null}
 
@@ -3159,6 +3247,89 @@ export function ConferenceManager({ conferences }) {
                               })
                             }
                           />
+
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 rounded border-border text-primary"
+                              checked={Boolean(editing.certificateSettings?.allowEmailRequest)}
+                              onChange={(e) =>
+                                onField("certificateSettings", {
+                                  ...normalizeCertificateSettings(editing.certificateSettings, {
+                                    totalDays:
+                                      (editing.conferenceDays || []).filter((d) => d.date)
+                                        .length || 1,
+                                  }),
+                                  allowEmailRequest: e.target.checked,
+                                })
+                              }
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-foreground">
+                                Allow request certificate by email
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                When off (default), attendees can only download the PDF. When on,
+                                they can also request the certificate by email, still subject to
+                                the usual eligibility and 24-hour email limits.
+                              </span>
+                            </span>
+                          </label>
+
+                          <div className="space-y-2 border-t border-border pt-4">
+                            <p className="text-sm font-medium text-foreground">
+                              Certificate template (A4 landscape PDF)
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Upload a finished A4 landscape PDF. We only place the recipient name
+                              on the dotted line and a verification QR in the bottom-right corner.
+                              If none is uploaded, the bundled NCDC template is used.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="inline-flex">
+                                <input
+                                  type="file"
+                                  accept="application/pdf,.pdf"
+                                  className="sr-only"
+                                  disabled={uploadingCertificateTemplate}
+                                  onChange={onCertificateTemplateSelected}
+                                />
+                                <span className="inline-flex cursor-pointer items-center rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground hover:bg-neutral-50">
+                                  {uploadingCertificateTemplate
+                                    ? "Uploading…"
+                                    : editing.certificateSettings?.templateUrl
+                                      ? "Replace template PDF"
+                                      : "Upload template PDF"}
+                                </span>
+                              </label>
+                              {editing.certificateSettings?.templateUrl ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    onField("certificateSettings", {
+                                      ...normalizeCertificateSettings(
+                                        editing.certificateSettings,
+                                        {
+                                          totalDays:
+                                            (editing.conferenceDays || []).filter((d) => d.date)
+                                              .length || 1,
+                                        },
+                                      ),
+                                      templateUrl: null,
+                                    })
+                                  }
+                                >
+                                  Use default template
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  Using default bundled template
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       ) : null}
                     </div>

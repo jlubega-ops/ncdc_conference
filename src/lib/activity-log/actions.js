@@ -41,6 +41,7 @@ export const ACTIVITY_ACTIONS = {
   PRESENTATION_DELETE: "presentation.delete",
   UPLOAD_CARD_IMAGE: "upload.card_image",
   UPLOAD_ORGANISER_LOGO: "upload.organiser_logo",
+  UPLOAD_CERTIFICATE_TEMPLATE: "upload.certificate_template",
   UPLOAD_SPEAKER_PHOTO: "upload.speaker_photo",
 
   // Registrations & attendees
@@ -73,6 +74,11 @@ export const ACTIVITY_ACTIONS = {
   // Gifts
   GIFT_ISSUE: "gift.issue",
 
+  // Tour registration
+  TOUR_REGISTER: "tour.register",
+  TOUR_UPDATE: "tour.update",
+  TOUR_REMOVE: "tour.remove",
+
   // Email queue
   EMAIL_QUEUE_ENQUEUE: "email_queue.enqueue",
   EMAIL_QUEUE_PROCESS: "email_queue.process",
@@ -80,5 +86,7 @@ export const ACTIVITY_ACTIONS = {
   // Feedback / certificates / profile
   FEEDBACK_SUBMIT: "feedback.submit",
   CERTIFICATE_EMAIL: "certificate.email",
+  CERTIFICATE_ADMIN_DOWNLOAD: "certificate.admin_download",
+  CERTIFICATE_ADMIN_EMAIL: "certificate.admin_email",
   PROFILE_UPDATE: "profile.update",
 };

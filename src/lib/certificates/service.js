@@ -24,6 +24,7 @@ import { readCachedCertificatePdf, writeCachedCertificatePdf, deleteCachedCertif
 import { withCertificatePdfSlot } from "@/lib/certificates/render-queue";
 import { getCertificateEmailCooldown } from "@/lib/certificates/email-cooldown";
 import { isCertificateEmailPending } from "@/lib/certificates/email-jobs";
+import { isCertificateEmailRequestAllowed, isCertificatesAllowed, normalizeCertificateSettings } from "@/lib/certificates/settings";
 import { getSmtpConfig } from "@/lib/email/config";
 
 const MAX_NUMBER_ATTEMPTS = 8;
@@ -94,6 +95,12 @@ function httpError(message, status) {
  */
 export async function assertCertificateCanBeEmailed(userId, slug) {
   const ctx = await getRegistrationContext(userId, slug);
+  if (!isCertificateEmailRequestAllowed(ctx.conference)) {
+    throw httpError(
+      "Certificate email is not enabled for this conference. Please download the PDF instead.",
+      403,
+    );
+  }
   const email = String(ctx.userEmail || "").trim();
   if (!email) {
     throw httpError("Your account has no email address. Download the PDF instead.", 400);
@@ -176,6 +183,7 @@ export async function getCertificateSummaries(userId) {
       (stats.remaining === 0 && stats.elapsed >= stats.totalDays && stats.totalDays > 0);
 
     const cooldown = getCertificateEmailCooldown(cert?.emailedAt);
+    const emailAllowed = isCertificateEmailRequestAllowed(mapped);
     const message = !eligible
       ? certificateEligibilityMessage(stats, mapped)
       : cert
@@ -195,9 +203,10 @@ export async function getCertificateSummaries(userId) {
       eligible,
       conferenceEnded,
       recipientName,
-      canEmail: Boolean(eligible && !cooldown.blocked),
+      allowEmailRequest: emailAllowed,
+      canEmail: Boolean(eligible && emailAllowed && !cooldown.blocked),
       nextEmailAt: cooldown.retryAt ? cooldown.retryAt.toISOString() : null,
-      emailCooldownMessage: cooldown.message,
+      emailCooldownMessage: emailAllowed ? cooldown.message : null,
       certificate: cert
         ? {
             id: cert.id,
@@ -371,6 +380,7 @@ async function buildCertificatePdfBuffer(cert) {
       organiserName: mapped.organiserName,
       organiserShortName: mapped.organiserShortName,
       organiserLogo: mapped.organiserLogo,
+      certificateSettings: mapped.certificateSettings,
     }),
   );
 
@@ -383,8 +393,10 @@ async function buildCertificatePdfBuffer(cert) {
 /**
  * @param {string} userId
  * @param {string} slug
+ * @param {{ markDownloaded?: boolean }} [opts]
  */
-export async function getCertificatePdfForUser(userId, slug) {
+export async function getCertificatePdfForUser(userId, slug, opts = {}) {
+  const markDownloaded = opts.markDownloaded !== false;
   const ctx = await getRegistrationContext(userId, slug);
   if (!isCertificateEligible(ctx.stats, ctx.conference)) {
     throw new Error(certificateEligibilityMessage(ctx.stats, ctx.conference));
@@ -400,6 +412,14 @@ export async function getCertificatePdfForUser(userId, slug) {
   });
   if (!cert) throw new Error("Certificate not found.");
   const buffer = await buildCertificatePdfBuffer(cert);
+  if (markDownloaded) {
+    await prisma.conferenceCertificate
+      .update({
+        where: { id: cert.id },
+        data: { downloadedAt: new Date() },
+      })
+      .catch(() => {});
+  }
   const filename = `NCDC-Certificate-${cert.certificateNumber.replace(/\//g, "-")}.pdf`;
   return { buffer, filename, certificateNumber: cert.certificateNumber };
 }
@@ -410,6 +430,12 @@ export async function getCertificatePdfForUser(userId, slug) {
  */
 export async function emailCertificateToUser(userId, slug) {
   const ctx = await getRegistrationContext(userId, slug);
+  if (!isCertificateEmailRequestAllowed(ctx.conference)) {
+    throw httpError(
+      "Certificate email is not enabled for this conference. Please download the PDF instead.",
+      403,
+    );
+  }
   const toEmail = String(ctx.userEmail || "").trim();
   if (!toEmail) {
     throw httpError("Your account has no email address. Download the PDF instead.", 400);
@@ -484,6 +510,208 @@ export async function invalidateCertificatePdfsForUser(userId) {
       await deleteCachedCertificatePdf(cert.id);
     }),
   );
+}
+
+/**
+ * Drop all cached certificate PDFs for a conference (e.g. after template change).
+ * @param {string} conferenceId
+ */
+export async function invalidateCertificatePdfsForConference(conferenceId) {
+  const certs = await prisma.conferenceCertificate.findMany({
+    where: { conferenceId },
+    select: { id: true },
+  });
+  await Promise.all(certs.map((cert) => deleteCachedCertificatePdf(cert.id)));
+}
+
+/**
+ * Admin roster: issued certificates + eligible confirmed attendees without one yet.
+ * @param {string} conferenceId
+ */
+export async function listConferenceCertificatesForAdmin(conferenceId) {
+  const conference = await prisma.conference.findUnique({ where: { id: conferenceId } });
+  if (!conference) throw new Error("Conference not found.");
+
+  const mapped = mapConferenceForUi(conference);
+  if (!isCertificatesAllowed(mapped)) {
+    throw new Error("Certificates are not enabled for this conference.");
+  }
+
+  const days = normalizeConferenceDays(conference.conferenceDays);
+  const tz = conference.timezone || "Africa/Nairobi";
+
+  const [registrations, certificates, marks] = await Promise.all([
+    prisma.conferenceRegistration.findMany({
+      where: { conferenceId, status: "CONFIRMED" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            profileData: true,
+            roles: {
+              select: { role: true, conferenceId: true },
+            },
+          },
+        },
+      },
+      orderBy: { registeredAt: "desc" },
+    }),
+    prisma.conferenceCertificate.findMany({
+      where: { conferenceId },
+      orderBy: { issuedAt: "desc" },
+    }),
+    days.length
+      ? findAttendanceMarks(
+          { conferenceId },
+          { select: { userId: true, dayDate: true } },
+        )
+      : [],
+  ]);
+
+  const certByUser = new Map(certificates.map((c) => [c.userId, c]));
+  const marksByUser = new Map();
+  for (const m of marks) {
+    if (!marksByUser.has(m.userId)) marksByUser.set(m.userId, []);
+    marksByUser.get(m.userId).push(m);
+  }
+
+  const settings = normalizeCertificateSettings(mapped.certificateSettings, {
+    totalDays: days.length || 1,
+  });
+
+  const rows = registrations.map((reg) => {
+    const userMarks = marksByUser.get(reg.userId) ?? [];
+    const stats = computeAttendanceStats(days, userMarks, tz);
+    const eligible = isCertificateEligible(stats, mapped);
+    const cert = certByUser.get(reg.userId) ?? null;
+    const profile = getProfileFromUser(reg.user);
+    const roleSet = new Set();
+    for (const r of reg.user.roles || []) {
+      if (r.role === "SUPERADMIN") roleSet.add("SUPERADMIN");
+      else if (!r.conferenceId || r.conferenceId === conferenceId) roleSet.add(r.role);
+    }
+    if (roleSet.size === 0) roleSet.add("ATTENDEE");
+
+    return {
+      userId: reg.userId,
+      email: reg.user.email,
+      name: profile.fullName || reg.user.name || reg.user.email,
+      roles: [...roleSet],
+      eligible,
+      stats: {
+        attended: stats.attended,
+        totalDays: stats.totalDays,
+        missed: stats.missed,
+        remaining: stats.remaining,
+      },
+      certificate: cert
+        ? {
+            id: cert.id,
+            certificateNumber: cert.certificateNumber,
+            recipientName: cert.recipientName,
+            issuedAt: cert.issuedAt,
+            downloadedAt: cert.downloadedAt,
+            emailedAt: cert.emailedAt,
+            attendancePercent: cert.attendancePercent,
+            daysAttended: cert.daysAttended,
+            totalDays: cert.totalDays,
+          }
+        : null,
+    };
+  });
+
+  // Sort: issued first (by issuedAt desc), then eligible without cert, then others
+  rows.sort((a, b) => {
+    const aIssued = a.certificate?.issuedAt ? new Date(a.certificate.issuedAt).getTime() : 0;
+    const bIssued = b.certificate?.issuedAt ? new Date(b.certificate.issuedAt).getTime() : 0;
+    if (aIssued && bIssued) return bIssued - aIssued;
+    if (aIssued) return -1;
+    if (bIssued) return 1;
+    if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+
+  const summary = {
+    confirmed: rows.length,
+    eligible: rows.filter((r) => r.eligible).length,
+    issued: rows.filter((r) => r.certificate).length,
+    downloaded: rows.filter((r) => r.certificate?.downloadedAt).length,
+    emailed: rows.filter((r) => r.certificate?.emailedAt).length,
+    allowEmailRequest: settings.allowEmailRequest,
+  };
+
+  return { rows, summary, conference: { id: mapped.id, slug: mapped.slug, title: mapped.title } };
+}
+
+/**
+ * Admin download — issues if needed, serves cached PDF when possible, marks downloadedAt.
+ * @param {string} conferenceId
+ * @param {string} userId
+ */
+export async function getCertificatePdfForAdmin(conferenceId, userId) {
+  const conference = await prisma.conference.findUnique({
+    where: { id: conferenceId },
+    select: { slug: true, certificateSettings: true, conferenceDays: true },
+  });
+  if (!conference) throw new Error("Conference not found.");
+  if (!isCertificatesAllowed(conference)) {
+    throw new Error("Certificates are not enabled for this conference.");
+  }
+
+  const result = await getCertificatePdfForUser(userId, conference.slug, {
+    markDownloaded: false,
+  });
+  return result;
+}
+
+/**
+ * Admin email to attendee — bypasses the public "allow email request" toggle.
+ * Still requires eligibility. Uses cached PDF when available.
+ * @param {string} conferenceId
+ * @param {string} userId
+ */
+export async function emailCertificateForAdmin(conferenceId, userId) {
+  const conference = await prisma.conference.findUnique({
+    where: { id: conferenceId },
+    select: { slug: true, certificateSettings: true },
+  });
+  if (!conference) throw new Error("Conference not found.");
+  if (!isCertificatesAllowed(conference)) {
+    throw new Error("Certificates are not enabled for this conference.");
+  }
+
+  const ctx = await getRegistrationContext(userId, conference.slug);
+  const toEmail = String(ctx.userEmail || "").trim();
+  if (!toEmail) {
+    throw httpError("This attendee has no email address.", 400);
+  }
+  if (!isCertificateEligible(ctx.stats, ctx.conference)) {
+    throw httpError(certificateEligibilityMessage(ctx.stats, ctx.conference), 400);
+  }
+
+  const cert = await issueCertificateForUser(userId, conference.slug, { sendEmail: false });
+  const result = await sendCertificateEmail(cert, toEmail);
+  if (!result.ok) {
+    throw httpError(
+      result.skipped
+        ? "Email sending is not available right now."
+        : `Could not send certificate to ${toEmail}.`,
+      result.skipped ? 503 : 502,
+    );
+  }
+
+  await prisma.conferenceCertificate.update({
+    where: { id: cert.id },
+    data: { emailedAt: new Date() },
+  });
+
+  return {
+    ok: true,
+    email: toEmail,
+    message: `Certificate emailed to ${toEmail}.`,
+  };
 }
 
 /**

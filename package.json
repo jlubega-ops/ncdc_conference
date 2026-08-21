@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
@@ -25,6 +25,7 @@
     "lucide-react": "^1.17.0",
     "next": "16.2.6",
     "nodemailer": "^8.0.10",
+    "pdf-lib": "^1.17.1",
     "pdfkit": "^0.18.0",
     "qrcode": "^1.5.4",
     "react": "19.2.4",

@@ -2,12 +2,13 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 function certificatePdfPath(certificateId) {
+  // v2: uppercase single-line name layout — orphan older caches so they regenerate.
   return path.join(
     process.cwd(),
     "storage",
     "private",
     "certificates",
-    `${certificateId}.pdf`,
+    `${certificateId}.v2.pdf`,
   );
 }
 

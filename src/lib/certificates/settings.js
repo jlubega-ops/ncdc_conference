@@ -1,17 +1,22 @@
 /**
  * @typedef {{
  *   allowed: boolean;
+ *   allowEmailRequest: boolean;
  *   basedOnAttendance: boolean;
  *   minAttendanceDays: number;
  *   downloadOpensAt: string | null;
+ *   templateUrl: string | null;
  * }} CertificateSettings
  */
 
 export const DEFAULT_CERTIFICATE_SETTINGS = {
   allowed: false,
+  allowEmailRequest: false,
   basedOnAttendance: true,
   minAttendanceDays: 1,
   downloadOpensAt: null,
+  /** Public URL of custom A4 landscape PDF template, or null for bundled default. */
+  templateUrl: null,
 };
 
 /**
@@ -41,9 +46,15 @@ export function normalizeCertificateSettings(raw, opts = {}) {
 
   return {
     allowed: Boolean(raw.allowed),
+    // Default off — only true when explicitly enabled on the conference.
+    allowEmailRequest: Boolean(raw.allowEmailRequest),
     basedOnAttendance,
     minAttendanceDays: minDays,
     downloadOpensAt,
+    templateUrl: (() => {
+      const url = String(raw.templateUrl || "").trim();
+      return url || null;
+    })(),
   };
 }
 
@@ -52,4 +63,13 @@ export function normalizeCertificateSettings(raw, opts = {}) {
  */
 export function isCertificatesAllowed(conference) {
   return normalizeCertificateSettings(conference?.certificateSettings).allowed;
+}
+
+/**
+ * Whether attendees may request a certificate by email for this conference.
+ * @param {any} conference
+ */
+export function isCertificateEmailRequestAllowed(conference) {
+  const settings = normalizeCertificateSettings(conference?.certificateSettings);
+  return settings.allowed && settings.allowEmailRequest;
 }

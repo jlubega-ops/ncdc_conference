@@ -65,6 +65,32 @@ export async function findGiftsOnlyUsersForConference(conferenceId) {
 }
 
 /**
+ * Users on the tour list for this conference but not on conference registration.
+ * @param {string} conferenceId
+ */
+export async function findTourOnlyUsersForConference(conferenceId) {
+  const tours = await prisma.conferenceTourRegistration.findMany({
+    where: { conferenceId },
+    select: { userId: true },
+  });
+  const userIds = [...new Set(tours.map((row) => row.userId).filter(Boolean))];
+  if (userIds.length === 0) return [];
+
+  const registrations = await prisma.conferenceRegistration.findMany({
+    where: { conferenceId, userId: { in: userIds } },
+    select: { userId: true },
+  });
+  const registered = new Set(registrations.map((row) => row.userId));
+  const tourOnlyIds = userIds.filter((id) => !registered.has(id));
+  if (tourOnlyIds.length === 0) return [];
+
+  return prisma.user.findMany({
+    where: { id: { in: tourOnlyIds } },
+    include: { roles: true },
+  });
+}
+
+/**
  * @param {{
  *   conferenceId: string;
  *   email?: string | null;
@@ -90,15 +116,21 @@ export async function findReusableConferenceUser({
     if (byEmail) return { user: byEmail, match: "email" };
   }
 
-  const giftsOnly = await findGiftsOnlyUsersForConference(conferenceId);
+  const [giftsOnly, tourOnly] = await Promise.all([
+    findGiftsOnlyUsersForConference(conferenceId),
+    findTourOnlyUsersForConference(conferenceId),
+  ]);
   const first = normalizeNamePart(firstName);
   const last = normalizeNamePart(lastName);
   const inst = normalizeNamePart(institution);
 
-  for (const user of giftsOnly) {
+  for (const user of [...giftsOnly, ...tourOnly]) {
     const userEmail = String(user.email || "").toLowerCase();
     if (realEmail && userEmail === realEmail) {
-      return { user, match: "gifts_email" };
+      return {
+        user,
+        match: giftsOnly.some((u) => u.id === user.id) ? "gifts_email" : "tour_email",
+      };
     }
     const profile = getProfileFromUser(user);
     const firstCand = normalizeNamePart(profile.firstName);
@@ -107,7 +139,10 @@ export async function findReusableConferenceUser({
     if (inst && profile.institution && normalizeNamePart(profile.institution) !== inst) {
       continue;
     }
-    return { user, match: "gifts_name" };
+    return {
+      user,
+      match: giftsOnly.some((u) => u.id === user.id) ? "gifts_name" : "tour_name",
+    };
   }
 
   return { user: null, match: null };
@@ -182,6 +217,37 @@ export async function mergeGiftIssuancesOntoUser({ conferenceId, fromUserId, toU
 }
 
 /**
+ * Move tour registrations from one user onto another for this conference.
+ * @param {{ conferenceId: string; fromUserId: string; toUserId: string }} params
+ */
+export async function mergeTourRegistrationsOntoUser({ conferenceId, fromUserId, toUserId }) {
+  if (!fromUserId || !toUserId || fromUserId === toUserId) return;
+
+  const oldRows = await prisma.conferenceTourRegistration.findMany({
+    where: { conferenceId, userId: fromUserId },
+  });
+
+  for (const row of oldRows) {
+    const existing = await prisma.conferenceTourRegistration.findUnique({
+      where: {
+        conferenceId_userId: {
+          conferenceId,
+          userId: toUserId,
+        },
+      },
+    });
+    if (existing) {
+      await prisma.conferenceTourRegistration.delete({ where: { id: row.id } });
+    } else {
+      await prisma.conferenceTourRegistration.update({
+        where: { id: row.id },
+        data: { userId: toUserId },
+      });
+    }
+  }
+}
+
+/**
  * Reuse a gifts-only (or email-matched) user when this person is later registered.
  * @param {{
  *   conferenceId: string;
@@ -212,6 +278,11 @@ export async function adoptUserForConferencePerson(params) {
         fromUserId: user.id,
         toUserId: taken.id,
       });
+      await mergeTourRegistrationsOntoUser({
+        conferenceId: params.conferenceId,
+        fromUserId: user.id,
+        toUserId: taken.id,
+      });
       user = taken;
     } else if (!taken) {
       user = await prisma.user.update({
@@ -222,7 +293,11 @@ export async function adoptUserForConferencePerson(params) {
     }
   }
 
-  if (reused.match === "email" || reused.match === "gifts_email") {
+  if (
+    reused.match === "email" ||
+    reused.match === "gifts_email" ||
+    reused.match === "tour_email"
+  ) {
     const nameMatch = await findReusableConferenceUser({
       conferenceId: params.conferenceId,
       firstName: params.firstName,
@@ -231,6 +306,11 @@ export async function adoptUserForConferencePerson(params) {
     });
     if (nameMatch.user && nameMatch.user.id !== user.id) {
       await mergeGiftIssuancesOntoUser({
+        conferenceId: params.conferenceId,
+        fromUserId: nameMatch.user.id,
+        toUserId: user.id,
+      });
+      await mergeTourRegistrationsOntoUser({
         conferenceId: params.conferenceId,
         fromUserId: nameMatch.user.id,
         toUserId: user.id,

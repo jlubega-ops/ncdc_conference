@@ -46,6 +46,7 @@ export async function deleteUserAndRelatedData(userId) {
   await prisma.$transaction([
     prisma.conferenceAccessKey.deleteMany({ where: { userId } }),
     prisma.conferenceGiftIssuance.deleteMany({ where: { userId } }),
+    prisma.conferenceTourRegistration.deleteMany({ where: { userId } }),
     prisma.paperSubmission.updateMany({
       where: { assignedReviewerId: userId },
       data: { assignedReviewerId: null },
@@ -71,6 +72,11 @@ export async function deleteUserIfOrphanAttendee(userId, conferenceId) {
     where: { userId },
   });
   if (giftCount > 0) return false;
+
+  const tourCount = await prisma.conferenceTourRegistration.count({
+    where: { userId },
+  });
+  if (tourCount > 0) return false;
 
   const orphan = await isOrphanAttendeeOnly(userId, {
     excludingConferenceIds: [conferenceId],
